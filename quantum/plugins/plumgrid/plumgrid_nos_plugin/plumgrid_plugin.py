@@ -27,11 +27,13 @@ from oslo.config import cfg
 
 from quantum.db import api as db
 from quantum.db import db_base_plugin_v2
+from quantum.extensions import portbindings
 from quantum.openstack.common import log as logging
 from quantum.plugins.plumgrid.common import exceptions as plum_excep
 from quantum.plugins.plumgrid.plumgrid_nos_plugin.plugin_ver import VERSION
 from quantum.plugins.plumgrid.plumgrid_nos_plugin import plumgrid_nos_snippets
 from quantum.plugins.plumgrid.plumgrid_nos_plugin import rest_connection
+from quantum import policy
 
 
 LOG = logging.getLogger(__name__)
@@ -56,6 +58,11 @@ cfg.CONF.register_opts(nos_server_opts, "PLUMgridNOS")
 
 
 class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
+
+    supported_extension_aliases = ["binding"]
+
+    binding_view = "extension:port_binding:view"
+    binding_set = "extension:port_binding:set"
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: Starting Plugin'))
@@ -194,8 +201,24 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
         port["port"]["admin_state_up"] = True
 
         # Plugin DB - Port Create and Return port
-        return super(QuantumPluginPLUMgridV2, self).create_port(context,
-                                                                port)
+        q_port = super(QuantumPluginPLUMgridV2, self).create_port(context,
+                                                                  port)
+        return self._port_viftype_binding(context, q_port)
+
+    def get_port(self, context, id, fields=None):
+        with context.session.begin(subtransactions=True):
+            q_port = super(QuantumPluginPLUMgridV2, self).get_port(context, id,
+                                                            fields)
+            self._port_viftype_binding(context, q_port)
+        return self._fields(q_port, fields)
+
+    def get_ports(self, context, filters=None, fields=None):
+        with context.session.begin(subtransactions=True):
+            q_ports = super(QuantumPluginPLUMgridV2, self).get_ports(context, filters,
+                                                              fields)
+            for q_port in q_ports:
+                self._port_viftype_binding(context, q_port)
+        return [self._fields(port, fields) for port in q_ports]
 
     def update_port(self, context, port_id, port):
         """
@@ -208,8 +231,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
         # VIF driver operations in Nova.
 
         # Plugin DB - Port Update
-        return super(QuantumPluginPLUMgridV2, self).update_port(
+        q_port = super(QuantumPluginPLUMgridV2, self).update_port(
             context, port_id, port)
+        return self._port_viftype_binding(context, q_port)
 
     def delete_port(self, context, port_id):
         """
@@ -329,6 +353,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
         for structure in domain_structure:
             nos_url = self.snippets.BASE_NOS_URL + net_id + structure
             self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data, headers)
+
+    def _port_viftype_binding(self, context, port):
+        if self._check_view_auth(context, port, self.binding_view):
+            port[portbindings.VIF_TYPE] = portbindings.VIF_TYPE_OTHER
+        return port
+
+    def _check_view_auth(self, context, resource, action):
+        return policy.check(context, action, resource)
 
     def _network_admin_state(self, network):
         try:
