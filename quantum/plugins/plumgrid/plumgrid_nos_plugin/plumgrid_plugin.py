@@ -115,8 +115,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
             try:
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
                           tenant_id, network["network"], net["id"])
-                nos_url = self.snippets.BASE_NOS_URL + net["id"]
                 headers = {}
+
+                # Hook to create tenant with net_id
+                nos_url = self.snippets.create_rule_url(net["id"])
+                body_data = self.snippets.create_rule_body_data(net["id"])
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                nos_url = self.snippets.BASE_NOS_URL + net["id"]
                 body_data = self.snippets.create_domain_body_data(tenant_id)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
