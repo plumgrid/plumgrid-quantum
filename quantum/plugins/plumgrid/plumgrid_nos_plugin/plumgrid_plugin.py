@@ -27,6 +27,7 @@ from oslo.config import cfg
 
 from quantum.db import api as db
 from quantum.db import db_base_plugin_v2
+from quantum.db import l3_db
 from quantum.extensions import portbindings
 from quantum.openstack.common import log as logging
 from quantum.plugins.plumgrid.common import exceptions as plum_excep
@@ -57,9 +58,10 @@ nos_server_opts = [
 cfg.CONF.register_opts(nos_server_opts, "PLUMgridNOS")
 
 
-class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
+class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
+                              l3_db.L3_NAT_db_mixin):
 
-    supported_extension_aliases = ["binding"]
+    supported_extension_aliases = ["router", "binding"]
 
     binding_view = "extension:port_binding:view"
     binding_set = "extension:port_binding:set"
@@ -117,14 +119,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
                           tenant_id, network["network"], net["id"])
                 headers = {}
 
-                # Hook to create tenant with net_id
+                # Hook to create rule with net_id
                 nos_url = self.snippets.create_rule_url(net["id"])
                 body_data = self.snippets.create_rule_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
                 nos_url = self.snippets.BASE_NOS_URL + net["id"]
-                body_data = self.snippets.create_domain_body_data(tenant_id)
+                body_data = self.snippets.create_domain_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
@@ -163,7 +165,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'DELETE', body_data, headers)
                 nos_url = self.snippets.BASE_NOS_URL + new_network["id"]
-                body_data = self.snippets.create_domain_body_data(tenant_id)
+                body_data = self.snippets.create_domain_body_data(net_id)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
             except:
@@ -274,7 +276,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
                 nos_url = self.snippets.BASE_NOS_URL + net_id
                 headers = {}
                 body_data = self.snippets.create_network_body_data(
-                    tenant_id, self.topology_name)
+                    net_id, self.topology_name)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
             except:
@@ -332,7 +334,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2):
                 self._cleaning_nos_subnet_structure(body_data, headers, net_id)
                 nos_url = self.snippets.BASE_NOS_URL + net_id
                 body_data = self.snippets.create_network_body_data(
-                    tenant_id, self.topology_name)
+                    net_id, self.topology_name)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 

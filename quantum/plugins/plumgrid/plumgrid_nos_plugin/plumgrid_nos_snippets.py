@@ -38,13 +38,13 @@ class DataNOSPLUMgrid():
     def create_rule_url(self, net_id):
         return self.RULE_NOS_URL + net_id + "_" + str(self.rule_counter_id)
 
-    def create_domain_body_data(self, tenant_id):
-        body_data = {"container_group": tenant_id}
+    def create_domain_body_data(self, net_id):
+        body_data = {"container_group": net_id}
         return body_data
 
-    def create_network_body_data(self, tenant_id, topology_name):
-        body_data = {"config_template": "single_bridge",
-                     "container_group": tenant_id,
+    def create_network_body_data(self, net_id, topology_name):
+        body_data = {"config_template": "bridge_dhcp",
+                     "container_group": net_id,
                      "topology_name": topology_name}
         return body_data
 
