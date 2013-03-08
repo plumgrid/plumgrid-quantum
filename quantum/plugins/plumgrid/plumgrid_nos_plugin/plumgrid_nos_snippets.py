@@ -27,9 +27,9 @@ LOG = logging.getLogger(__name__)
 
 
 class DataNOSPLUMgrid():
-
     BASE_NOS_URL = '/0/connectivity/domain/'
     RULE_NOS_URL = '/0/connectivity/rule/'
+    TENANT_NOS_URL = '/0/tenant_manager/tenants/'
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: NOS Body Data Creation'))
@@ -48,8 +48,18 @@ class DataNOSPLUMgrid():
                      "topology_name": topology_name}
         return body_data
 
+    def create_tenant_domain_body_data(self, net_id):
+        body_data = {"containers": {
+            net_id: {"enable": "true",
+                     "qos_marking": "9",
+                     "type": "Gold",
+                     "property": "Test Container %s Property1 Text" % net_id,
+                     "services_enabled": {
+                         "DHCP": {}}, "domains": {}, "rules": {}}}}
+        return body_data
+
     def create_rule_body_data(self, net_id):
-        self.rule_counter_id =+1
+        self.rule_counter_id = +1
         body_data = {"criteria": "pgtag1",
                      "match": net_id,
                      "domain_dest": "/connectivity/domain/" + net_id}

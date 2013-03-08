@@ -119,12 +119,19 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                           tenant_id, network["network"], net["id"])
                 headers = {}
 
-                # Hook to create rule with net_id
+                # PLUMgrid creates Domain Rules
                 nos_url = self.snippets.create_rule_url(net["id"])
                 body_data = self.snippets.create_rule_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
+                # PLUMgrid creates Tenant Domain
+                nos_url = self.snippets.TENANT_NOS_URL + net["id"]
+                body_data = self.snippets.create_tenant_domain_body_data(net["id"])
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                #PLUMgrid creates Network Domain
                 nos_url = self.snippets.BASE_NOS_URL + net["id"]
                 body_data = self.snippets.create_domain_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
