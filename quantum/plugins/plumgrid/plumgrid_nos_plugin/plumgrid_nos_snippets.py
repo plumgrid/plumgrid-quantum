@@ -27,18 +27,40 @@ LOG = logging.getLogger(__name__)
 
 
 class DataNOSPLUMgrid():
-
     BASE_NOS_URL = '/0/connectivity/domain/'
+    RULE_NOS_URL = '/0/connectivity/rule/'
+    TENANT_NOS_URL = '/0/tenant_manager/tenants/'
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: NOS Body Data Creation'))
+        self.rule_counter_id = 0
 
-    def create_domain_body_data(self, tenant_id):
-        body_data = {"container_group": tenant_id}
+    def create_rule_url(self, net_id):
+        return self.RULE_NOS_URL + net_id + "_" + str(self.rule_counter_id)
+
+    def create_domain_body_data(self, net_id):
+        body_data = {"container_group": net_id}
         return body_data
 
-    def create_network_body_data(self, tenant_id, topology_name):
-        body_data = {"config_template": "single_bridge",
-                     "container_group": tenant_id,
+    def create_network_body_data(self, net_id, topology_name):
+        body_data = {"config_template": "bridge_dhcp",
+                     "container_group": net_id,
                      "topology_name": topology_name}
+        return body_data
+
+    def create_tenant_domain_body_data(self, net_id):
+        body_data = {"containers": {
+            net_id: {"enable": "true",
+                     "qos_marking": "9",
+                     "type": "Gold",
+                     "property": "Test Container %s Property1 Text" % net_id,
+                     "services_enabled": {
+                         "DHCP": {}}, "domains": {}, "rules": {}}}}
+        return body_data
+
+    def create_rule_body_data(self, net_id):
+        self.rule_counter_id = +1
+        body_data = {"criteria": "pgtag1",
+                     "match": net_id,
+                     "domain_dest": "/connectivity/domain/" + net_id}
         return body_data
