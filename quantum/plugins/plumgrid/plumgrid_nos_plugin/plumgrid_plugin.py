@@ -24,7 +24,11 @@ to the Network Operating System by PLUMgrid called NOS
 import sys
 
 from oslo.config import cfg
+import json
+import re
+import sys
 
+from quantum.common import exceptions as q_exc
 from quantum.db import api as db
 from quantum.db import db_base_plugin_v2
 from quantum.db import l3_db
@@ -119,23 +123,60 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                           tenant_id, network["network"], net["id"])
                 headers = {}
 
+
+                # Verify VND (Tenant_ID) does not exist in Director
+                nos_url = self.snippets.BASE_NOS_URL + tenant_id
+                body_data = ""
+                resp = self.rest_conn.nos_rest_conn(nos_url,
+                                                   'GET', body_data, headers)
+                resp_dict = json.loads(resp[2])
+                if not tenant_id in resp_dict.values():
+                    LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
+                    nos_url = self.snippets.TENANT_NOS_URL + tenant_id
+                    body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                    nos_url = self.snippets.BASE_NOS_URL + tenant_id
+                    body_data = self.snippets.create_domain_body_data(tenant_id)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data, headers)
+
+                    # PLUMgrid creates Domain Rules
+                    LOG.debug(_('Creating Rule for Tenant: %s'), tenant_id)
+                    nos_url = self.snippets.create_rule_url(tenant_id)
+                    body_data = self.snippets.create_rule_body_data(tenant_id)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+
+
+
+
+
+
+
+                # PLUMgrid creates Tenant Domain
+                """
+                nos_url = self.snippets.TENANT_NOS_URL + net["id"]
+                body_data = self.snippets.create_tenant_domain_body_data(net["id"])
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
                 # PLUMgrid creates Domain Rules
                 nos_url = self.snippets.create_rule_url(net["id"])
                 body_data = self.snippets.create_rule_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
-                # PLUMgrid creates Tenant Domain
-                nos_url = self.snippets.TENANT_NOS_URL + net["id"]
-                body_data = self.snippets.create_tenant_domain_body_data(net["id"])
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+
 
                 #PLUMgrid creates Network Domain
                 nos_url = self.snippets.BASE_NOS_URL + net["id"]
                 body_data = self.snippets.create_domain_body_data(net["id"])
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
+                """
 
             except:
                 err_message = _("PLUMgrid NOS communication failed")
@@ -280,12 +321,51 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             tenant_id = subnet_details["tenant_id"]
 
             try:
-                nos_url = self.snippets.BASE_NOS_URL + net_id
+                # Add bridge to VND
+                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
                 headers = {}
-                body_data = self.snippets.create_network_body_data(
-                    net_id, self.topology_name)
+                bridge_name = "br_" + net_id[:6]
+                body_data = self.snippets.create_bridge_body_data(
+                    tenant_id, bridge_name)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
+
+                if subnet['ip_version'] == 6:
+                    raise q_exc.NotImplementedError(
+                        _("PLUMgrid doesn't support IPv6."))
+
+                if subnet['enable_dhcp'] == True:
+                    # Add DHCP VNF
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    dhcp_name = "dhcp_" + net_id[:6]
+                    dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
+                    print dhcp_server_ip
+                    mask = subnet['cidr'].split("/")
+                    print mask[1]
+                    dhcp_server_mask = self._get_mask_from_subnet(mask[1])
+                    print dhcp_server_mask
+
+                    ip_range_dict = subnet['allocation_pools']
+                    print ip_range_dict
+                    ip_range_start = ip_range_dict[0].get('start')
+                    print ip_range_start
+                    ip_range_end = ip_range_dict[0].get('end')
+                    print ip_range_end
+                    dns_ip = subnet['dns_nameservers']
+                    print dns_ip
+                    default_gateway = subnet['gateway_ip']
+                    print default_gateway
+
+
+                    body_data = self.snippets.create_dhcp_body_data(
+                    tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                    ip_range_start, ip_range_end, dns_ip, default_gateway)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                #for element in subnet:
+                 #   print subnet[element]
+
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
                 LOG.Exception(err_message)
@@ -391,3 +471,16 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
         return network
+
+    def _get_dhcp_ip (self, cidr):
+        dhcp_ip = re.split('(.*)\.(.*)\.(.*)\.(.*)/(.*)', cidr)
+        dhcp_ip[4] = "1"
+        dhcp_ip = dhcp_ip[1:-2]
+        return '.'.join(dhcp_ip)
+
+    def _get_mask_from_subnet(self, mask):
+        bits = 0
+        mask_int = int(mask)
+        for i in xrange(32-mask_int,32):
+            bits |= (1 << i)
+        return "%d.%d.%d.%d" % ((bits & 0xff000000) >> 24, (bits & 0xff0000) >> 16, (bits & 0xff00) >> 8 , (bits & 0xff))
