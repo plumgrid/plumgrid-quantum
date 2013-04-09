@@ -51,6 +51,17 @@ class DataNOSPLUMgrid():
                                     + tenant_id, "pgtag1": tenant_id}
         return body_data
 
+    def network_level_rule_body_data(self, tenant_id, net_id, bridge_name):
+        #self.rule_counter_id = +1
+        body_data = {"properties" : { "rule_group": { net_id[:6] : {"ne_dest": "/connectivity/domain/"
+                                    + tenant_id + "/ne/" + bridge_name + "/action/Action1",
+                     "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag1",
+                                            "match" : net_id}}}}}}
+
+        return body_data
+
+
+
     def create_domain_body_data(self, net_id): #USED
         body_data = {"container_group": net_id,
                      "topology_name": "quantum-based"}
@@ -67,7 +78,7 @@ class DataNOSPLUMgrid():
             tenant_id: {"enable": "true",
                      "qos_marking": "9",
                      "type": "Gold",
-                     "property": "Test Container %s Property1 Text" % tenant_id,
+                     "property": "Container %s Property" % tenant_id,
                      "services_enabled": {
                          "DHCP": {}}, "domains": {}, "rules": {}}}}
         return body_data

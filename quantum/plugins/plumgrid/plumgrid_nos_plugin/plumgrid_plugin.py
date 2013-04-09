@@ -134,6 +134,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
                     nos_url = self.snippets.TENANT_NOS_URL + tenant_id
                     body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
+                    tenant_data = body_data
                     self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
@@ -150,9 +151,18 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                              'PUT', body_data, headers)
 
 
-
-
-
+                # Saving Tenant - Domains in CDB
+                # Get the current domain
+                #TODO:(Edgar) Complete this code
+                """
+                LOG.debug(_('Getting domains from CDB'))
+                nos_url = self.snippets.CDB_BASE_URL + '__47__0__47__tenant_manager'
+                body_data = {}
+                tenants_cdb = self.rest_conn.nos_rest_conn(nos_url,
+                                             'GET', body_data, headers)
+                print tenants_cdb
+                print tenant_data
+                """
 
 
 
@@ -330,43 +340,43 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
-                # Add dhcp to VND
-                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                headers = {}
-                dhcp_name = "dhcp_" + net_id[:6]
-                dhcp_server_ip = "0.0.0.0"
-                dhcp_server_mask = "0.0.0.0"
-                ip_range_start = "0.0.0.0"
-                ip_range_end = "0.0.0.0"
-                dns_ip = "0.0.0.0"
-                default_gateway = "0.0.0.0"
-
-                body_data = self.snippets.create_dhcp_body_data(
-                    tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
-                    ip_range_start, ip_range_end, dns_ip, default_gateway)
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
-
-                #Add Link br - dhcp
-                nos_url = self.snippets.create_link_url(tenant_id, net_id)
-                headers = {}
-                body_data = self.snippets.create_link_body_data(
-                    bridge_name, dhcp_name)
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
-
-                for element in subnet:
-                    if not subnet[element]:
-                        subnet[element] = "0.0.0.0"
-
                 if subnet['ip_version'] == 6:
                     raise q_exc.NotImplementedError(
                         _("PLUMgrid doesn't support IPv6."))
 
                 if subnet['enable_dhcp'] == True:
-                    # Add DHCP VNF
+                    # Add dhcp to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    headers = {}
+                    dhcp_name = "dhcp_" + net_id[:6]
+                    dhcp_server_ip = "0.0.0.0"
+                    dhcp_server_mask = "0.0.0.0"
+                    ip_range_start = "0.0.0.0"
+                    ip_range_end = "0.0.0.0"
+                    dns_ip = "0.0.0.0"
+                    default_gateway = "0.0.0.0"
 
+                    body_data = self.snippets.create_dhcp_body_data(
+                        tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                        ip_range_start, ip_range_end, dns_ip, default_gateway)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data, headers)
+
+                    # Create link between bridge - dhcp
+                    nos_url = self.snippets.create_link_url(tenant_id, net_id)
+                    headers = {}
+                    body_data = self.snippets.create_link_body_data(
+                        bridge_name, dhcp_name)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data, headers)
+
+                    for element in subnet:
+                        if not subnet[element]:
+                            subnet[element] = "0.0.0.0"
+
+
+                    # Add dhcp with values to VND
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
                     mask = subnet['cidr'].split("/")
                     dhcp_server_mask = self._get_mask_from_subnet(mask[1])
@@ -383,7 +393,21 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
+                elif subnet['enable_dhcp'] == False:
+                    LOG.debug(_("DHCP has NOT been deployed"))
+
+
+                # Add classification rule
+                # Add bridge to VND
+                nos_url = self.snippets.BASE_NOS_URL + tenant_id
+                headers = {}
+                body_data = self.snippets.network_level_rule_body_data(
+                    tenant_id, net_id, bridge_name)
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
                 # Add domain to CDB
+                """
                 nos_url = self.snippets.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
                 headers = {}
                 body_data = {}
@@ -405,7 +429,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # Get JSON data ne
                 json_data = self._get_json_data(tenant_id, "/ne")
                 print json_data
-
+                """
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
