@@ -324,11 +324,40 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # Add bridge to VND
                 nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
                 headers = {}
-                bridge_name = "br_" + net_id[:6]
+                bridge_name = "bridge_" + net_id[:6]
                 body_data = self.snippets.create_bridge_body_data(
                     tenant_id, bridge_name)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
+
+                # Add dhcp to VND
+                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                headers = {}
+                dhcp_name = "dhcp_" + net_id[:6]
+                dhcp_server_ip = "0.0.0.0"
+                dhcp_server_mask = "0.0.0.0"
+                ip_range_start = "0.0.0.0"
+                ip_range_end = "0.0.0.0"
+                dns_ip = "0.0.0.0"
+                default_gateway = "0.0.0.0"
+
+                body_data = self.snippets.create_dhcp_body_data(
+                    tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                    ip_range_start, ip_range_end, dns_ip, default_gateway)
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                #Add Link br - dhcp
+                nos_url = self.snippets.create_link_url(tenant_id, net_id)
+                headers = {}
+                body_data = self.snippets.create_link_body_data(
+                    bridge_name, dhcp_name)
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                for element in subnet:
+                    if not subnet[element]:
+                        subnet[element] = "0.0.0.0"
 
                 if subnet['ip_version'] == 6:
                     raise q_exc.NotImplementedError(
@@ -337,25 +366,16 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 if subnet['enable_dhcp'] == True:
                     # Add DHCP VNF
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                    dhcp_name = "dhcp_" + net_id[:6]
+
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
-                    print dhcp_server_ip
                     mask = subnet['cidr'].split("/")
-                    print mask[1]
                     dhcp_server_mask = self._get_mask_from_subnet(mask[1])
-                    print dhcp_server_mask
 
                     ip_range_dict = subnet['allocation_pools']
-                    print ip_range_dict
                     ip_range_start = ip_range_dict[0].get('start')
-                    print ip_range_start
                     ip_range_end = ip_range_dict[0].get('end')
-                    print ip_range_end
                     dns_ip = subnet['dns_nameservers']
-                    print dns_ip
                     default_gateway = subnet['gateway_ip']
-                    print default_gateway
-
 
                     body_data = self.snippets.create_dhcp_body_data(
                     tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
@@ -363,8 +383,29 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
-                #for element in subnet:
-                 #   print subnet[element]
+                # Add domain to CDB
+                nos_url = self.snippets.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
+                headers = {}
+                body_data = {}
+                self.rest_conn.nos_rest_conn(nos_url,
+                                             'PUT', body_data, headers)
+
+                # Get JSON data link
+                json_data = self._get_json_data(tenant_id, "/link")
+
+                # Get JSON data properties
+                json_data = self._get_json_data(tenant_id, "/properties")
+
+                # Get JSON data container_group
+                json_data = self._get_json_data(tenant_id, "/container_group")
+
+                # Get JSON data topology_name
+                json_data = self._get_json_data(tenant_id, "/topology_name")
+
+                # Get JSON data ne
+                json_data = self._get_json_data(tenant_id, "/ne")
+                print json_data
+
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -443,6 +484,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def _get_plugin_version(self):
         return VERSION
+
+    def _get_json_data(self, tenant_id, json_path):
+        nos_url = self.snippets.BASE_NOS_URL + tenant_id + json_path
+        body_data = {}
+        headers = {}
+        json_data = self.rest_conn.nos_rest_conn(nos_url,
+                                                    'GET', body_data, headers)
+        return json.loads(json_data[2])
 
     def _cleaning_nos_subnet_structure(self, body_data, headers, net_id):
         domain_structure = ['/properties', '/link', '/ne']

@@ -30,10 +30,17 @@ class DataNOSPLUMgrid():
     BASE_NOS_URL = '/0/connectivity/domain/'
     RULE_NOS_URL = '/0/pem_master/ifc_rule_logical/'
     TENANT_NOS_URL = '/0/tenant_manager/tenants/'
+    CDB_BASE_URL = '/0/cdb/folder/'
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: NOS Body Data Creation'))
         #self.rule_counter_id = 0
+
+    def create_cdb_domain(self, tenant_id):
+        return self.CDB_BASE_URL + tenant_id
+
+    def create_cdb_topology(self, tenant_id):
+        return self.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
 
     def create_rule_url(self, tenant_id): #USED
         return self.RULE_NOS_URL + "tenant_rule"
@@ -67,6 +74,16 @@ class DataNOSPLUMgrid():
 
     def create_ne_url(self, tenant_id, net_id, ne): #USED
         return self.BASE_NOS_URL + tenant_id + "/ne/" + ne + "_" + net_id[:6]
+
+    def create_link_url(self, tenant_id, net_id): #USED
+        return self.BASE_NOS_URL + tenant_id + "/link/" + net_id[:6]
+
+    #TODO: (Edgar) Improve this call to link N number of elements
+    def create_link_body_data(self, ne_bridge, ne_dhcp):
+        body_data = {"link_type": "static", "attachment1":
+            "/ne/" + ne_bridge + "/ifc/1", "attachment2":
+            "/ne/" + ne_dhcp + "/ifc/1"}
+        return body_data
 
     def create_bridge_body_data(selfself, tenant_id, bridge_name):
         body_data = {"ne_type": "bridge", "mobility": "true", "ne_dname": bridge_name, "ifc":
