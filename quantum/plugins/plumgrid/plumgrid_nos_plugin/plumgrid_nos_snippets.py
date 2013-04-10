@@ -29,6 +29,7 @@ LOG = logging.getLogger(__name__)
 class DataNOSPLUMgrid():
     BASE_NOS_URL = '/0/connectivity/domain/'
     RULE_NOS_URL = '/0/pem_master/ifc_rule_logical/'
+    RULE_NOS_CM_URL = '/0/connectivity/rule/'
     TENANT_NOS_URL = '/0/tenant_manager/tenants/'
     CDB_BASE_URL = '/0/cdb/folder/'
 
@@ -43,7 +44,17 @@ class DataNOSPLUMgrid():
         return self.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
 
     def create_rule_url(self, tenant_id): #USED
-        return self.RULE_NOS_URL + "tenant_rule"
+        return self.RULE_NOS_URL + tenant_id[:6]
+
+    def create_rule_cm_url(self, tenant_id):
+        return self.RULE_NOS_CM_URL + tenant_id[:6]
+
+    def create_rule_cm_body_data(self, tenant_id):
+        body_data = {"criteria": "pgtag1",
+                     "add_context" : "first-level-rule",
+                     "match": tenant_id,
+                     "domain_dest": "/connectivity/domain/" + tenant_id}
+        return body_data
 
     def create_rule_body_data(self, tenant_id): #USED
         #self.rule_counter_id = +1
@@ -51,12 +62,22 @@ class DataNOSPLUMgrid():
                                     + tenant_id, "pgtag1": tenant_id}
         return body_data
 
+    """
     def network_level_rule_body_data(self, tenant_id, net_id, bridge_name):
         #self.rule_counter_id = +1
-        body_data = {"properties" : { "rule_group": { net_id[:6] : {"ne_dest": "/connectivity/domain/"
+        body_data = {"container_group": net_id,
+                     "topology_name": "quantum-based",
+                     "properties" : { "rule_group": { net_id[:6] : {"ne_dest": "/connectivity/domain/"
                                     + tenant_id + "/ne/" + bridge_name + "/action/Action1",
-                     "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag1",
+                     "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag2",
                                             "match" : net_id}}}}}}
+"""
+    def network_level_rule_body_data(self, tenant_id, net_id, bridge_name):
+        #self.rule_counter_id = +1
+        body_data = {"ne_dest": "/connectivity/domain/"
+                                                                               + tenant_id + "/ne/" + bridge_name + "/action/Action1",
+                                                                    "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag2",
+                                                                                    "match" : net_id}}}
 
         return body_data
 
