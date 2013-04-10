@@ -68,14 +68,14 @@ class DataNOSPLUMgrid():
         body_data = {"container_group": net_id,
                      "topology_name": "quantum-based",
                      "properties" : { "rule_group": { net_id[:6] : {"ne_dest": "/connectivity/domain/"
-                                    + tenant_id + "/ne/" + bridge_name + "/action/Action1",
+                                    + tenant_id + "/ne/" + bridge_name + "/action/action1",
                      "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag2",
                                             "match" : net_id}}}}}}
 """
     def network_level_rule_body_data(self, tenant_id, net_id, bridge_name):
         #self.rule_counter_id = +1
         body_data = {"ne_dest": "/connectivity/domain/"
-                                                                               + tenant_id + "/ne/" + bridge_name + "/action/Action1",
+                                                                               + tenant_id + "/ne/" + bridge_name + "/action/action1",
                                                                     "rule": { "1": {"add_context" : "second-level-rule", "criteria" : "pgtag2",
                                                                                     "match" : net_id}}}
 
@@ -119,7 +119,7 @@ class DataNOSPLUMgrid():
 
     def create_bridge_body_data(selfself, tenant_id, bridge_name):
         body_data = {"ne_type": "bridge", "mobility": "true", "ne_dname": bridge_name, "ifc":
-            { "1": { "ifc_type": "static" }},"action":{"Action1":
+            { "1": { "ifc_type": "static" }},"action":{"action1":
             {"action_text":"create_and_link_ifc(DYN_)"}},
             "container_group": tenant_id,"topology_name":"quantum-based"}
         return body_data
@@ -131,4 +131,11 @@ class DataNOSPLUMgrid():
             {"1": {"ifc_type": "static","dhcp_server_ip": dhcp_server_ip,"dhcp_server_mask":
                 dhcp_server_mask,"ip_range_start": ip_range_start,"ip_range_end":
                 ip_range_end,"dns_ip": dns_ip,"default_gateway": default_gateway}}}
+        return body_data
+
+    def create_router_body_data(selfself, tenant_id, router_name):
+        body_data = {"ne_type": "router", "mobility": "true", "ne_dname": router_name,
+                     "action":{"action1":
+                                                           {"action_text":"create_and_link_ifc(DYN_)"}},
+                     "container_group": tenant_id,"topology_name":"quantum-based"}
         return body_data
