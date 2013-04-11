@@ -122,41 +122,25 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
                           tenant_id, network["network"], net["id"])
+                # Create VND
+                self._create_vnd(tenant_id)
+
+                # Add bridge to VND
+                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
                 headers = {}
-
-
-                # Verify VND (Tenant_ID) does not exist in Director
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id
-                body_data = ""
-                resp = self.rest_conn.nos_rest_conn(nos_url,
-                                                   'GET', body_data, headers)
-                resp_dict = json.loads(resp[2])
-                if not tenant_id in resp_dict.values():
-                    LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
-                    nos_url = self.snippets.TENANT_NOS_URL + tenant_id
-                    body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
-                    tenant_data = body_data
-                    self.rest_conn.nos_rest_conn(nos_url,
+                bridge_name = "bridge_" + net_id[:6]
+                body_data = self.snippets.create_bridge_body_data(
+                    tenant_id, bridge_name)
+                self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
 
-                    nos_url = self.snippets.BASE_NOS_URL + tenant_id
-                    body_data = self.snippets.create_domain_body_data(tenant_id)
-                    self.rest_conn.nos_rest_conn(nos_url,
-                                                 'PUT', body_data, headers)
-
-                    # PLUMgrid creates Domain Rules
-                    LOG.debug(_('Creating Rule for Tenant: %s'), tenant_id)
-                    nos_url = self.snippets.create_rule_cm_url(tenant_id)
-                    body_data = self.snippets.create_rule_cm_body_data(tenant_id)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                # Add classification rule
+                # Add bridge to VND
+                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
+                body_data = self.snippets.network_level_rule_body_data(
+                    tenant_id, net_id, bridge_name)
+                self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
-
-                    # PLUMgrid creates Domain Rules
-                    nos_url = self.snippets.create_rule_url(net["id"])
-                    body_data = self.snippets.create_rule_body_data(net["id"])
-                    self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
-
 
                 # Saving Tenant - Domains in CDB
                 # Get the current domain
@@ -311,15 +295,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             tenant_id = subnet_details["tenant_id"]
 
             try:
-                # Add bridge to VND
-                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-                headers = {}
-                bridge_name = "bridge_" + net_id[:6]
-                body_data = self.snippets.create_bridge_body_data(
-                    tenant_id, bridge_name)
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
-
                 if subnet['ip_version'] == 6:
                     raise q_exc.NotImplementedError(
                         _("PLUMgrid doesn't support IPv6."))
@@ -327,7 +302,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 if subnet['enable_dhcp'] == True:
                     # Add dhcp to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                    headers = {}
                     dhcp_name = "dhcp_" + net_id[:6]
                     dhcp_server_ip = "1.1.1.1"
                     dhcp_server_mask = "1.1.1.1"
@@ -344,7 +318,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                     # Create link between bridge - dhcp
                     nos_url = self.snippets.create_link_url(tenant_id, net_id)
-                    headers = {}
                     body_data = self.snippets.create_link_body_data(
                         bridge_name, dhcp_name)
                     self.rest_conn.nos_rest_conn(nos_url,
@@ -379,19 +352,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     LOG.debug(_("DHCP has NOT been deployed"))
 
 
-                # Add classification rule
-                # Add bridge to VND
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
-                headers = {}
-                body_data = self.snippets.network_level_rule_body_data(
-                    tenant_id, net_id, bridge_name)
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+
 
                 # Add domain to CDB
                 """
                 nos_url = self.snippets.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
-                headers = {}
                 body_data = {}
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data, headers)
@@ -500,6 +465,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             router = super(QuantumPluginPLUMgridV2, self).create_router(context,
                                                                        router)
             router_id = router["id"]
+            self._create_vnd(tenant_id)
             # create router on the network controller
             try:
                 # Add bridge to VND
@@ -568,7 +534,12 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         # delete from network ctrl. Remote error on delete is ignored
         try:
-            print "ROUTER"
+            router_name = "router_" + router_id[:6]
+            nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + router_name
+            headers = {}
+            body_data = {}
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'DELETE', body_data, headers)
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -660,9 +631,42 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
     def _get_plugin_version(self):
         return VERSION
 
-    def _create_vnd(self, tenant_id, element_id):
+    def _create_vnd(self, tenant_id):
 
-        pass
+
+
+        # Verify VND (Tenant_ID) does not exist in Director
+        nos_url = self.snippets.BASE_NOS_URL + tenant_id
+        body_data = {}
+        headers = {}
+        resp = self.rest_conn.nos_rest_conn(nos_url,
+                                            'GET', body_data, headers)
+        resp_dict = json.loads(resp[2])
+        if not tenant_id in resp_dict.values():
+            LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
+            nos_url = self.snippets.TENANT_NOS_URL + tenant_id
+            body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
+            tenant_data = body_data
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
+
+            nos_url = self.snippets.BASE_NOS_URL + tenant_id
+            body_data = self.snippets.create_domain_body_data(tenant_id)
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
+
+            # PLUMgrid creates Domain Rules
+            LOG.debug(_('Creating Rule for Tenant: %s'), tenant_id)
+            nos_url = self.snippets.create_rule_cm_url(tenant_id)
+            body_data = self.snippets.create_rule_cm_body_data(tenant_id)
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
+
+            # PLUMgrid creates Domain Rules
+            nos_url = self.snippets.create_rule_url(tenant_id)
+            body_data = self.snippets.create_rule_body_data(tenant_id)
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
 
     def _get_json_data(self, tenant_id, json_path):
         nos_url = self.snippets.BASE_NOS_URL + tenant_id + json_path
