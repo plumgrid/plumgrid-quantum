@@ -118,7 +118,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         with context.session.begin(subtransactions=True):
             net = super(QuantumPluginPLUMgridV2, self).create_network(context,
                                                                       network)
-
+            net_id = net["id"]
             try:
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
                           tenant_id, network["network"], net["id"])
@@ -302,7 +302,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 if subnet['enable_dhcp'] == True:
                     # Add dhcp to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    headers = {}
                     dhcp_name = "dhcp_" + net_id[:6]
+                    bridge_name = "bridge_" + net_id[:6]
                     dhcp_server_ip = "1.1.1.1"
                     dhcp_server_mask = "1.1.1.1"
                     ip_range_start = "1.1.1.1"
