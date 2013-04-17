@@ -20,6 +20,8 @@
 Snippets needed by the PLUMgrid Plugin
 """
 
+import random
+
 from quantum.openstack.common import log as logging
 
 
@@ -117,14 +119,14 @@ class DataNOSPLUMgrid():
             "/ne/" + ne_dhcp + "/ifc/1"}
         return body_data
 
-    def create_bridge_body_data(selfself, tenant_id, bridge_name):
+    def create_bridge_body_data(self, tenant_id, bridge_name):
         body_data = {"ne_type": "bridge", "mobility": "true", "ne_dname": bridge_name, "ifc":
             { "1": { "ifc_type": "static" }},"action":{"action1":
             {"action_text":"create_and_link_ifc(DYN_)"}},
             "container_group": tenant_id,"topology_name":"quantum-based"}
         return body_data
 
-    def create_dhcp_body_data(selfself, tenant_id, dhcp_name, dhcp_server_ip,
+    def create_dhcp_body_data(self, tenant_id, dhcp_name, dhcp_server_ip,
                               dhcp_server_mask, ip_range_start, ip_range_end,
                               dns_ip, default_gateway):
         body_data = {"ne_type": "dhcp", "mobility":"true", "ne_dname": dhcp_name, "ifc":
@@ -133,9 +135,23 @@ class DataNOSPLUMgrid():
                 ip_range_end,"dns_ip": dns_ip,"default_gateway": default_gateway}}}
         return body_data
 
-    def create_router_body_data(selfself, tenant_id, router_name):
+    def create_router_body_data(self, tenant_id, router_name):
         body_data = {"ne_type": "router", "mobility": "true", "ne_dname": router_name,
-                     "action":{"action1":
-                                                           {"action_text":"create_and_link_ifc(DYN_)"}},
+                     "action":{"action1": {"action_text":"create_and_link_ifc(DYN_)"}},
+                     "config":{"0":{"user_mac": self._create_mac()}},
                      "container_group": tenant_id,"topology_name":"quantum-based"}
         return body_data
+
+    def _create_mac(self):
+        """
+        This function generate unique random mac addresses
+        :param base:
+        :param cntr:
+        :return: Mac address
+        """
+        mac = [0x00, 0x24, 0x81, random.randint(0x00, 0x7f),
+               random.randint(0x00, 0xff),
+               random.randint(0x00, 0xff)]
+        mac_address = ':'.join(map(lambda x: "%02x" % x, mac))
+        return mac_address
+    
