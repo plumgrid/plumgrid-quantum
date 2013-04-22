@@ -339,7 +339,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     ip_range_dict = subnet['allocation_pools']
                     ip_range_start = ip_range_dict[0].get('start')
                     ip_range_end = ip_range_dict[0].get('end')
-                    dns_ip = subnet['dns_nameservers']
+                    dns_ip = subnet['dns_nameservers'][0]
                     if dns_ip == "1.1.1.1":
                         dns_ip = dhcp_server_ip
                     default_gateway = subnet['gateway_ip']
