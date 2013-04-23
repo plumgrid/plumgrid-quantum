@@ -96,27 +96,27 @@ class DataNOSPLUMgrid():
     #                 "topology_name": topology_name}
     #    return body_data
 
-    def create_tenant_domain_body_data(self, tenant_id): #USED
+    def create_tenant_domain_body_data(self, tenant_id):
         body_data = {"containers": {
             tenant_id: {"enable": "true",
                      "qos_marking": "9",
                      "type": "Gold",
                      "property": "Container %s Property" % tenant_id,
                      "services_enabled": {
-                         "DHCP": {}}, "domains": {}, "rules": {}}}}
+                         "DHCP": {"service_type":"DHCP"}, "GW_NAT_1": {"service_type":"NAT"}}, "domains": {}, "rules": {}}}}
         return body_data
 
-    def create_ne_url(self, tenant_id, net_id, ne): #USED
-        return self.BASE_NOS_URL + tenant_id + "/ne/" + ne + "_" + net_id[:6]
+    def create_ne_url(self, tenant_id, ne_id, ne):
+        return self.BASE_NOS_URL + tenant_id + "/ne/" + ne + "_" + ne_id[:6]
 
-    def create_link_url(self, tenant_id, net_id): #USED
-        return self.BASE_NOS_URL + tenant_id + "/link/" + net_id[:6]
+    def create_link_url(self, tenant_id, prefix_link_id, sufix_link_id=""):
+        return self.BASE_NOS_URL + tenant_id + "/link/" + prefix_link_id[:6] + sufix_link_id[:6]
 
     #TODO: (Edgar) Improve this call to link N number of elements
-    def create_link_body_data(self, ne_bridge, ne_dhcp):
+    def create_link_body_data(self, ne_start, ne_end, ifc_name_ne_start="1", ifc_name_ne_end="1"):
         body_data = {"link_type": "static", "attachment1":
-            "/ne/" + ne_bridge + "/ifc/1", "attachment2":
-            "/ne/" + ne_dhcp + "/ifc/1"}
+            "/ne/" + ne_start + "/ifc/" + ifc_name_ne_start[:6], "attachment2":
+            "/ne/" + ne_end + "/ifc/" + ifc_name_ne_end[:6]}
         return body_data
 
     def create_bridge_body_data(self, tenant_id, bridge_name):

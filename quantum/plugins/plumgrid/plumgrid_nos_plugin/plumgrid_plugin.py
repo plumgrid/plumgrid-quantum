@@ -489,7 +489,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def update_router(self, context, router_id, router):
 
-        LOG.debug(_("QuantumRestProxyV2.update_router() called"))
+        LOG.debug(_("QuantumPluginPLUMgrid: update_router() called"))
 
         with context.session.begin(subtransactions=True):
 
@@ -502,7 +502,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
             # update router on network controller
             try:
-                print "ROUTER"
+                print "UPDATE ROUTER"
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -513,7 +513,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         return new_router
 
     def delete_router(self, context, router_id):
-        LOG.debug(_("QuantumRestProxyV2: delete_router() called"))
+        LOG.debug(_("QuantumPluginPLUMgrid: delete_router() called"))
 
         with context.session.begin(subtransactions=True):
             orig_router = self._get_router(context, router_id)
@@ -550,7 +550,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def add_router_interface(self, context, router_id, interface_info):
 
-        LOG.debug(_("QuantumRestProxyV2: add_router_interface() called"))
+        LOG.debug(_("QuantumPluginPLUMgrid: add_router_interface() called"))
 
         # Validate args
         router = self._get_router(context, router_id)
@@ -563,16 +563,37 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                                               interface_info)
         port = self._get_port(context, new_interface_info['port_id'])
         net_id = port['network_id']
-        subnet_id = new_interface_info['subnet_id']
-        # we will use the port's network id as interface's id
-        interface_id = net_id
-        intf_details = self._get_router_intf_details(context,
-                                                     interface_id,
-                                                     subnet_id)
+        interface_ip = port['fixed_ips'][0]['ip_address']
+
 
         # create interface on the network controller
         try:
-            print "ROUTER"
+            bridge_name = "bridge_" + net_id[:6]
+            router_name = "router_" + router_id[:6]
+
+            # Create interface at router
+            nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+            nos_url = nos_url + "/ifc/" + net_id[:6]
+            headers = {}
+            body_data = { "ifc_type": "static", "ip_address": interface_ip,
+                          "ip_address_mask": "255.255.255.0"}
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
+
+            #Create interface at Bridge
+            nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+            nos_url = nos_url + "/ifc/" + router_id[:6]
+            headers = {}
+            body_data = { "ifc_type": "static"}
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
+
+            # Create link between bridge - router
+            nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+            body_data = self.snippets.create_link_body_data(
+                bridge_name, router_name, router_id, net_id)
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data, headers)
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -583,25 +604,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def remove_router_interface(self, context, router_id, interface_info):
 
-        LOG.debug(_("QuantumRestProxyV2: remove_router_interface() called"))
+        LOG.debug(_("QuantumPluginPLUMgrid: remove_router_interface() called"))
 
         # Validate args
         router = self._get_router(context, router_id)
         tenant_id = router['tenant_id']
 
-        # we will first get the interface identifier before deleting in the DB
-        if not interface_info:
-            msg = "Either subnet_id or port_id must be specified"
-            raise q_exc.BadRequest(resource='router', msg=msg)
-        if 'port_id' in interface_info:
-            port = self._get_port(context, interface_info['port_id'])
-            interface_id = port['network_id']
-        elif 'subnet_id' in interface_info:
-            subnet = self._get_subnet(context, interface_info['subnet_id'])
-            interface_id = subnet['network_id']
-        else:
-            msg = "Either subnet_id or port_id must be specified"
-            raise q_exc.BadRequest(resource='router', msg=msg)
+        port = self._get_port(context, interface_info['port_id'])
+        net_id = port['network_id']
 
         # remove router in DB
         del_intf_info = super(QuantumPluginPLUMgridV2,
@@ -611,7 +621,27 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         # create router on the network controller
         try:
-            print "ROUTER"
+            # Delete Link
+            headers = {}
+            body_data = {}
+            bridge_name = "bridge_" + net_id[:6]
+            router_name = "router_" + router_id[:6]
+            nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'DELETE', body_data, headers)
+
+            # Delete Interface Bridge
+            nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+            nos_url = nos_url + "/ifc/" + router_id[:6]
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'DELETE', body_data, headers)
+
+            # Delete Interface Router
+            nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+            nos_url = nos_url + "/ifc/" + net_id[:6]
+            self.rest_conn.nos_rest_conn(nos_url,
+                                         'DELETE', body_data, headers)
+
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -634,8 +664,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         return VERSION
 
     def _create_vnd(self, tenant_id):
-
-
 
         # Verify VND (Tenant_ID) does not exist in Director
         nos_url = self.snippets.BASE_NOS_URL + tenant_id
