@@ -67,14 +67,8 @@ class RestConnection(object):
             resp = conn.getresponse()
             resp_str = resp.read()
 
-            LOG.debug(_("PLUMgrid_NOS_Server Connection Data: %s, %s"),
-                      resp, resp_str)
-
             if resp.status is httplib.OK:
                 try:
-                    respdata = json.loads(resp_str)
-                    LOG.debug(_("PLUMgrid_NOS_Server Connection RESP: %s"),
-                              respdata)
                     pass
                 except ValueError:
                     err_message = _("PLUMgrid HTTP Connection Failed: ")
