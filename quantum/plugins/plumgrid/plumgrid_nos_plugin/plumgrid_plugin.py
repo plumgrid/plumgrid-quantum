@@ -266,7 +266,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             context, port_id, port)
         return self._port_viftype_binding(context, q_port)
 
-    def delete_port(self, context, port_id):
+    def delete_port(self, context, port_id, l3_port_check=True):
         """
         Delete port core Quantum API
         """
@@ -606,20 +606,25 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         LOG.debug(_("QuantumPluginPLUMgrid: remove_router_interface() called"))
 
-        # Validate args
         router = self._get_router(context, router_id)
         tenant_id = router['tenant_id']
-
-        port = self._get_port(context, interface_info['port_id'])
         net_id = port['network_id']
+
+	if 'port_id' in interface_info:
+            port = self._get_port(context, interface_info['port_id'])
+            interface_id = port['network_id']
+        elif 'subnet_id' in interface_info:
+            subnet = self._get_subnet(context, interface_info['subnet_id'])
+            interface_id = subnet['network_id']
+        else:
+            err_message = "Either subnet_id or port_id must be specified"
+            raise plum_excep.PLUMgridException(err_message)
 
         # remove router in DB
         del_intf_info = super(QuantumPluginPLUMgridV2,
                               self).remove_router_interface(context,
                                                             router_id,
                                                             interface_info)
-
-        # create router on the network controller
         try:
             # Delete Link
             headers = {}
@@ -648,9 +653,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
 
-        # return new interface
         return del_intf_info
-
+    
     """
     Extension API implementation
     """
