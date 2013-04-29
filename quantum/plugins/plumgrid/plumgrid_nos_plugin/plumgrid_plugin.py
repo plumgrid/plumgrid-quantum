@@ -608,10 +608,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         router = self._get_router(context, router_id)
         tenant_id = router['tenant_id']
-        net_id = port['network_id']
+	port = self._get_port(context, interface_info['port_id'])
 
 	if 'port_id' in interface_info:
-            port = self._get_port(context, interface_info['port_id'])
             interface_id = port['network_id']
         elif 'subnet_id' in interface_info:
             subnet = self._get_subnet(context, interface_info['subnet_id'])
@@ -620,7 +619,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             err_message = "Either subnet_id or port_id must be specified"
             raise plum_excep.PLUMgridException(err_message)
 
-        # remove router in DB
+        net_id = port['network_id']
+	# remove router in DB
         del_intf_info = super(QuantumPluginPLUMgridV2,
                               self).remove_router_interface(context,
                                                             router_id,
