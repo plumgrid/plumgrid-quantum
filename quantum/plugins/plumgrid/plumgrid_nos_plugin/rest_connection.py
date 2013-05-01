@@ -42,11 +42,10 @@ class RestConnection(object):
         self.port = port
         self.timeout = timeout
 
-    def nos_rest_conn(self, nos_url, action, data, headers):
+    def nos_rest_conn(self, nos_url, action, data):
         self.nos_url = nos_url
         body_data = json.dumps(data)
-        if not headers:
-            headers = {}
+        headers = {}
         headers['Content-type'] = 'application/json'
         headers['Accept'] = 'application/json'
 

@@ -55,9 +55,7 @@ nos_server_opts = [
     cfg.StrOpt('password', default='password', secret=True,
                help=_("PLUMgrid NOS admin password")),
     cfg.IntOpt('servertimeout', default=5,
-               help=_("PLUMgrid NOS server timeout")),
-    cfg.IntOpt('topologyname', default='t1',
-               help=_("PLUMgrid NOS topology name")), ]
+               help=_("PLUMgrid NOS server timeout")),]
 
 
 cfg.CONF.register_opts(nos_server_opts, "PLUMgridNOS")
@@ -78,7 +76,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         nos_plumgrid = cfg.CONF.PLUMgridNOS.nos_server
         nos_port = cfg.CONF.PLUMgridNOS.nos_server_port
         timeout = cfg.CONF.PLUMgridNOS.servertimeout
-        self.topology_name = cfg.CONF.PLUMgridNOS.topologyname
         self.snippets = plumgrid_nos_snippets.DataNOSPLUMgrid()
 
         # TODO: (Edgar) These are placeholders for next PLUMgrid release
@@ -127,12 +124,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                 # Add bridge to VND
                 nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-                headers = {}
                 bridge_name = "bridge_" + net_id[:6]
                 body_data = self.snippets.create_bridge_body_data(
                     tenant_id, bridge_name)
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
 
                 # Add classification rule
                 # Add bridge to VND
@@ -140,7 +136,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 body_data = self.snippets.network_level_rule_body_data(
                     tenant_id, net_id, bridge_name)
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
 
                 # Saving Tenant - Domains in CDB
                 # Get the current domain
@@ -150,7 +146,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 nos_url = self.snippets.CDB_BASE_URL + '__47__0__47__tenant_manager'
                 body_data = {}
                 tenants_cdb = self.rest_conn.nos_rest_conn(nos_url,
-                                             'GET', body_data, headers)
+                                             'GET', body_data)
                 print tenants_cdb
                 print tenant_data
                 """
@@ -203,14 +199,13 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             tenant_id = self._get_tenant_id_for_create(context, net_id)
             try:
                 bridge_name = "bridge_" + net_id[:6]
-                headers = {}
                 body_data = {}
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + bridge_name
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'DELETE', body_data, headers)
+                                             'DELETE', body_data)
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'DELETE', body_data, headers)
+                                             'DELETE', body_data)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed")
@@ -298,7 +293,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 if subnet['enable_dhcp'] == True:
                     # Add dhcp to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                    headers = {}
                     dhcp_name = "dhcp_" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
                     dhcp_server_ip = "1.0.0.1"
@@ -309,17 +303,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     default_gateway = "1.0.0.1"
 
                     body_data = self.snippets.create_dhcp_body_data(
-                        tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                        dhcp_name, dhcp_server_ip, dhcp_server_mask,
                         ip_range_start, ip_range_end, dns_ip, default_gateway)
                     self.rest_conn.nos_rest_conn(nos_url,
-                                                 'PUT', body_data, headers)
+                                                 'PUT', body_data)
 
                     # Create link between bridge - dhcp
                     nos_url = self.snippets.create_link_url(tenant_id, net_id)
                     body_data = self.snippets.create_link_body_data(
                         bridge_name, dhcp_name)
                     self.rest_conn.nos_rest_conn(nos_url,
-                                                 'PUT', body_data, headers)
+                                                 'PUT', body_data)
 
                     # Add dhcp with values to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
@@ -338,10 +332,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                     default_gateway = subnet['gateway_ip']
                     body_data = self.snippets.create_dhcp_body_data(
-                    tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                    dhcp_name, dhcp_server_ip, dhcp_server_mask,
                     ip_range_start, ip_range_end, dns_ip, default_gateway)
                     self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
 
                 elif subnet['enable_dhcp'] == False:
                     LOG.debug(_("DHCP has NOT been deployed"))
@@ -371,11 +365,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
             try:
                 dhcp_name = "dhcp_" + net_id[:6]
-                headers = {}
                 body_data = {}
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'DELETE', body_data, headers)
+                                             'DELETE', body_data)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -403,7 +396,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 # PLUMgrid Server does not support updating resources yet
                 dhcp_name = "dhcp_" + net_id[:6]
-                headers = {}
                 nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                 dhcp_server_ip = self._get_dhcp_ip(new_subnet['cidr'])
                 mask = new_subnet['cidr'].split("/")
@@ -418,10 +410,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     dns_ip = dhcp_server_ip
                 default_gateway = new_subnet['gateway_ip']
                 body_data = self.snippets.create_dhcp_body_data(
-                tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                dhcp_name, dhcp_server_ip, dhcp_server_mask,
                 ip_range_start, ip_range_end, dns_ip, default_gateway)
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -450,12 +442,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 # Add bridge to VND
                 nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-                headers = {}
                 router_name = "router_" + router_id[:6]
                 body_data = self.snippets.create_router_body_data(
                     tenant_id, router_name)
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -470,22 +461,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         LOG.debug(_("QuantumPluginPLUMgrid: update_router() called"))
 
         with context.session.begin(subtransactions=True):
-
-            orig_router = super(QuantumPluginPLUMgridV2, self).get_router(context,
-                                                                     router_id)
-            tenant_id = orig_router["tenant_id"]
-            new_router = super(QuantumPluginPLUMgridV2, self).update_router(context,
-                                                                       router_id,
-                                                                       router)
-
-            # update router on network controller
-            try:
-                print "UPDATE ROUTER"
-
-            except:
-                err_message = _("PLUMgrid NOS communication failed: ")
-                LOG.Exception(err_message)
-                raise plum_excep.PLUMgridException(err_message)
+            new_router = super(QuantumPluginPLUMgridV2,
+                               self).update_router(context, router_id, router)
+            # Update router in EVO Cube Director
+            # No operation needed in EVO Cue director for updating router
 
         # return updated router
         return new_router
@@ -503,10 +482,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         try:
             router_name = "router_" + router_id[:6]
             nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + router_name
-            headers = {}
             body_data = {}
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data, headers)
+                                         'DELETE', body_data)
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -539,26 +517,24 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # Create interface at router
             nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
             nos_url = nos_url + "/ifc/" + net_id[:6]
-            headers = {}
             body_data = { "ifc_type": "static", "ip_address": interface_ip,
                           "ip_address_mask": "255.255.255.0"}
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
             #Create interface at Bridge
             nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
             nos_url = nos_url + "/ifc/" + router_id[:6]
-            headers = {}
             body_data = { "ifc_type": "static"}
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
             # Create link between bridge - router
             nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
             body_data = self.snippets.create_link_body_data(
                 bridge_name, router_name, router_id, net_id)
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -583,24 +559,22 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                                             interface_info)
         try:
             # Delete Link
-            headers = {}
             body_data = {}
             nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data, headers)
+                                         'DELETE', body_data)
 
             # Delete Interface Bridge
             nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
             nos_url = nos_url + "/ifc/" + router_id[:6]
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data, headers)
+                                         'DELETE', body_data)
 
             # Delete Interface Router
             nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
             nos_url = nos_url + "/ifc/" + net_id[:6]
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data, headers)
-
+                                         'DELETE', body_data)
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -626,9 +600,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         # Verify VND (Tenant_ID) does not exist in Director
         nos_url = self.snippets.BASE_NOS_URL + tenant_id
         body_data = {}
-        headers = {}
         resp = self.rest_conn.nos_rest_conn(nos_url,
-                                            'GET', body_data, headers)
+                                            'GET', body_data)
         resp_dict = json.loads(resp[2])
         if not tenant_id in resp_dict.values():
             LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
@@ -636,39 +609,38 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
             tenant_data = body_data
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
             nos_url = self.snippets.BASE_NOS_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
             # PLUMgrid creates Domain Rules
             LOG.debug(_('Creating Rule for Tenant: %s'), tenant_id)
             nos_url = self.snippets.create_rule_cm_url(tenant_id)
             body_data = self.snippets.create_rule_cm_body_data(tenant_id)
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
             # PLUMgrid creates Domain Rules
             nos_url = self.snippets.create_rule_url(tenant_id)
             body_data = self.snippets.create_rule_body_data(tenant_id)
             self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data, headers)
+                                         'PUT', body_data)
 
     def _get_json_data(self, tenant_id, json_path):
         nos_url = self.snippets.BASE_NOS_URL + tenant_id + json_path
         body_data = {}
-        headers = {}
         json_data = self.rest_conn.nos_rest_conn(nos_url,
-                                                    'GET', body_data, headers)
+                                                    'GET', body_data)
         return json.loads(json_data[2])
 
-    def _cleaning_nos_subnet_structure(self, body_data, headers, net_id):
+    def _cleaning_nos_subnet_structure(self, body_data, net_id):
         domain_structure = ['/properties', '/link', '/ne']
         for structure in domain_structure:
             nos_url = self.snippets.BASE_NOS_URL + net_id + structure
-            self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data, headers)
+            self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
 
     def _port_viftype_binding(self, context, port):
         if self._check_view_auth(context, port, self.binding_view):
