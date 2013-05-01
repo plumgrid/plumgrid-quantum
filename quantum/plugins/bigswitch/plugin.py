@@ -1,4 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
+delete_router
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
 # Copyright 2012 Big Switch Networks, Inc.
 # All Rights Reserved.
 #

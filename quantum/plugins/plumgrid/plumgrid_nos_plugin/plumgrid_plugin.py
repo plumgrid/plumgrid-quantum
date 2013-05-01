@@ -203,13 +203,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             tenant_id = self._get_tenant_id_for_create(context, net_id)
             try:
                 bridge_name = "bridge_" + net_id[:6]
-                dhcp_name = "dhcp_" + net_id[:6]
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + bridge_name
                 headers = {}
                 body_data = {}
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'DELETE', body_data, headers)
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
+                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + bridge_name
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'DELETE', body_data, headers)
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
@@ -285,11 +281,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         """
 
         LOG.debug(_("QuantumPluginPLUMgrid Status: create_subnet() called"))
-
         with context.session.begin(subtransactions=True):
             # Plugin DB - Subnet Create
             subnet = super(QuantumPluginPLUMgridV2, self).create_subnet(
                 context, subnet)
+
             subnet_details = self._get_subnet(context, subnet["id"])
             net_id = subnet_details["network_id"]
             tenant_id = subnet_details["tenant_id"]
@@ -305,12 +301,12 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     headers = {}
                     dhcp_name = "dhcp_" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
-                    dhcp_server_ip = "1.1.1.1"
-                    dhcp_server_mask = "1.1.1.1"
-                    ip_range_start = "1.1.1.1"
-                    ip_range_end = "1.1.1.1"
-                    dns_ip = "1.1.1.1"
-                    default_gateway = "1.1.1.1"
+                    dhcp_server_ip = "1.0.0.1"
+                    dhcp_server_mask = "255.255.255.0"
+                    ip_range_start = "1.0.0.10"
+                    ip_range_end = "1.0.0.20"
+                    dns_ip = "1.0.0.1"
+                    default_gateway = "1.0.0.1"
 
                     body_data = self.snippets.create_dhcp_body_data(
                         tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
@@ -325,11 +321,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self.rest_conn.nos_rest_conn(nos_url,
                                                  'PUT', body_data, headers)
 
-                    for element in subnet:
-                        if not subnet[element]:
-                            subnet[element] = "1.1.1.1"
-
-
                     # Add dhcp with values to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
@@ -339,11 +330,13 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     ip_range_dict = subnet['allocation_pools']
                     ip_range_start = ip_range_dict[0].get('start')
                     ip_range_end = ip_range_dict[0].get('end')
-                    dns_ip = subnet['dns_nameservers'][0]
-                    if dns_ip == "1.1.1.1":
+                    if subnet['dns_nameservers']:
+                        # PLUMgrid EVO Director DHCP only supports one DNS IP
+                        dns_ip = subnet['dns_nameservers'][0]
+                    else:
                         dns_ip = dhcp_server_ip
-                    default_gateway = subnet['gateway_ip']
 
+                    default_gateway = subnet['gateway_ip']
                     body_data = self.snippets.create_dhcp_body_data(
                     tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
                     ip_range_start, ip_range_end, dns_ip, default_gateway)
@@ -352,33 +345,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                 elif subnet['enable_dhcp'] == False:
                     LOG.debug(_("DHCP has NOT been deployed"))
-
-
-
-
-                # Add domain to CDB
-                """
-                nos_url = self.snippets.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
-                body_data = {}
-                self.rest_conn.nos_rest_conn(nos_url,
-                                             'PUT', body_data, headers)
-
-                # Get JSON data link
-                json_data = self._get_json_data(tenant_id, "/link")
-
-                # Get JSON data properties
-                json_data = self._get_json_data(tenant_id, "/properties")
-
-                # Get JSON data container_group
-                json_data = self._get_json_data(tenant_id, "/container_group")
-
-                # Get JSON data topology_name
-                json_data = self._get_json_data(tenant_id, "/topology_name")
-
-                # Get JSON data ne
-                json_data = self._get_json_data(tenant_id, "/ne")
-                print json_data
-                """
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -402,7 +368,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 context, subnet_id)
             tenant_id = self._get_tenant_id_for_create(context, subnet_id)
             net_id = subnet_details["network_id"]
-            print net_id
+
             try:
                 dhcp_name = "dhcp_" + net_id[:6]
                 headers = {}
@@ -438,12 +404,24 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # PLUMgrid Server does not support updating resources yet
                 dhcp_name = "dhcp_" + net_id[:6]
                 headers = {}
-                body_data = {}
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
+                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                dhcp_server_ip = self._get_dhcp_ip(new_subnet['cidr'])
+                mask = new_subnet['cidr'].split("/")
+                dhcp_server_mask = self._get_mask_from_subnet(mask[1])
+                ip_range_dict = new_subnet['allocation_pools']
+                ip_range_start = ip_range_dict[0].get('start')
+                ip_range_end = ip_range_dict[0].get('end')
+                if new_subnet['dns_nameservers']:
+                    # PLUMgrid EVO Director DHCP only supports one DNS IP
+                    dns_ip = new_subnet['dns_nameservers'][0]
+                else:
+                    dns_ip = dhcp_server_ip
+                default_gateway = new_subnet['gateway_ip']
+                body_data = self.snippets.create_dhcp_body_data(
+                tenant_id, dhcp_name, dhcp_server_ip, dhcp_server_mask,
+                ip_range_start, ip_range_end, dns_ip, default_gateway)
                 self.rest_conn.nos_rest_conn(nos_url,
-                                             'DELETE', body_data, headers)
-
-                self.create_subnet(context, new_subnet)
+                                             'PUT', body_data, headers)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -519,20 +497,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             orig_router = self._get_router(context, router_id)
             tenant_id = orig_router["tenant_id"]
 
-            # Ensure that the router is not used
-            router_filter = {'router_id': [router_id]}
-            fips = self.get_floatingips_count(context.elevated(),
-                                              filters=router_filter)
-            if fips:
-                raise l3.RouterInUse(router_id=router_id)
-
-            device_owner = l3_db.DEVICE_OWNER_ROUTER_INTF
-            device_filter = {'device_id': [router_id],
-                             'device_owner': [device_owner]}
-            ports = self.get_ports_count(context.elevated(),
-                                         filters=device_filter)
-            if ports:
-                raise l3.RouterInUse(router_id=router_id)
+            super(QuantumPluginPLUMgridV2, self).delete_router(context, router_id)
 
         # delete from network ctrl. Remote error on delete is ignored
         try:
@@ -557,11 +522,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         tenant_id = router['tenant_id']
 
         # create interface in DB
-        new_interface_info = super(QuantumPluginPLUMgridV2,
+        int_router = super(QuantumPluginPLUMgridV2,
                                    self).add_router_interface(context,
                                                               router_id,
                                                               interface_info)
-        port = self._get_port(context, new_interface_info['port_id'])
+        port = self._get_port(context, int_router['port_id'])
         net_id = port['network_id']
         interface_ip = port['fixed_ips'][0]['ip_address']
 
@@ -600,7 +565,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
 
-        return new_interface_info
+        return int_router
 
     def remove_router_interface(self, context, router_id, interface_info):
 
@@ -608,20 +573,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         router = self._get_router(context, router_id)
         tenant_id = router['tenant_id']
-	port = self._get_port(context, interface_info['port_id'])
-
-	if 'port_id' in interface_info:
-            interface_id = port['network_id']
-        elif 'subnet_id' in interface_info:
-            subnet = self._get_subnet(context, interface_info['subnet_id'])
-            interface_id = subnet['network_id']
-        else:
-            err_message = "Either subnet_id or port_id must be specified"
-            raise plum_excep.PLUMgridException(err_message)
-
+        port = self._get_port(context, interface_info['port_id'])
         net_id = port['network_id']
-	# remove router in DB
-        del_intf_info = super(QuantumPluginPLUMgridV2,
+
+        # remove router in DB
+        del_int_router = super(QuantumPluginPLUMgridV2,
                               self).remove_router_interface(context,
                                                             router_id,
                                                             interface_info)
@@ -629,8 +585,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # Delete Link
             headers = {}
             body_data = {}
-            bridge_name = "bridge_" + net_id[:6]
-            router_name = "router_" + router_id[:6]
             nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
             self.rest_conn.nos_rest_conn(nos_url,
                                          'DELETE', body_data, headers)
@@ -653,7 +607,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
 
-        return del_intf_info
+        return del_int_router
     
     """
     Extension API implementation
