@@ -115,6 +115,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         with context.session.begin(subtransactions=True):
             net = super(QuantumPluginPLUMgridV2, self).create_network(context,
                                                                       network)
+            # Propagate all L3 data into DB
+            self._process_l3_create(context, network['network'], net['id'])
+            self._extend_network_dict_l3(context, net)
+
             net_id = net["id"]
             try:
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
@@ -212,6 +216,29 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
+
+    def get_network(self, context, id, fields=None):
+        session = context.session
+        with session.begin(subtransactions=True):
+            net = super(QuantumPluginPLUMgridV2, self).get_network(context,
+                                                              id, None)
+            self._extend_network_dict_l3(context, net)
+        return self._fields(net, fields)
+
+    def get_networks(self, context, filters=None, fields=None,
+                     sorts=None,
+                     limit=None, marker=None, page_reverse=False):
+        session = context.session
+        with session.begin(subtransactions=True):
+            nets = super(QuantumPluginPLUMgridV2,
+                         self).get_networks(context, filters, None, sorts,
+                                            limit, marker, page_reverse)
+            for net in nets:
+                self._extend_network_dict_l3(context, net)
+
+        return [self._fields(net, fields) for net in nets]
+
+
     def create_port(self, context, port):
         """
         Create port core Quantum API
@@ -278,12 +305,22 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         LOG.debug(_("QuantumPluginPLUMgrid Status: create_subnet() called"))
         with context.session.begin(subtransactions=True):
             # Plugin DB - Subnet Create
+            net = super(QuantumPluginPLUMgridV2, self).get_network(
+                context, subnet['subnet']['network_id'], fields=None)
+
             subnet = super(QuantumPluginPLUMgridV2, self).create_subnet(
                 context, subnet)
 
             subnet_details = self._get_subnet(context, subnet["id"])
             net_id = subnet_details["network_id"]
             tenant_id = subnet_details["tenant_id"]
+
+
+            #Initial implementation for Floating IPs (emagana)
+            self._extend_network_dict_l3(context, net)
+            if net['router:external']:
+                gateway_ip = subnet['gateway_ip']
+                network_address, length = subnet['cidr'].split('/')
 
             try:
                 if subnet['ip_version'] == 6:
