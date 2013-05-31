@@ -27,6 +27,8 @@ from oslo.config import cfg
 import json
 import re
 import sys
+import simplejson
+import os
 
 from quantum.common import exceptions as q_exc
 from quantum.db import api as db
@@ -134,6 +136,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
 
+                cdb_url = self.snippets.create_cdb_domain(tenant_id)
+                LOG.debug(_('Creating network url : %s'), cdb_url)
+                self._write_to_cdb(cdb_url, ["ne"])
+
                 # Add classification rule
                 # Add bridge to VND
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
@@ -142,18 +148,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
 
-                # Saving Tenant - Domains in CDB
-                # Get the current domain
-                #TODO:(Edgar) Complete this code
-                """
-                LOG.debug(_('Getting domains from CDB'))
-                nos_url = self.snippets.CDB_BASE_URL + '__47__0__47__tenant_manager'
-                body_data = {}
-                tenants_cdb = self.rest_conn.nos_rest_conn(nos_url,
-                                             'GET', body_data)
-                print tenants_cdb
-                print tenant_data
-                """
+                self._write_to_cdb(cdb_url, ["properties", "link"])
 
             except:
                 err_message = _("PLUMgrid NOS communication failed")
@@ -210,6 +205,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'DELETE', body_data)
+
+                self._write_to_cdb(cdb_url, ["properties", "link"])
 
             except:
                 err_message = _("PLUMgrid NOS communication failed")
@@ -352,6 +349,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self.rest_conn.nos_rest_conn(nos_url,
                                                  'PUT', body_data)
 
+                    cdb_url = self.snippets.create_cdb_domain(tenant_id)
+                    self._write_to_cdb(cdb_url, ["properties", "link"])
+
                     # Add dhcp with values to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
@@ -373,6 +373,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     ip_range_start, ip_range_end, dns_ip, default_gateway)
                     self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
+                    self._write_to_cdb(cdb_url, ["ne"])
 
                 elif subnet['enable_dhcp'] == False:
                     LOG.debug(_("DHCP has NOT been deployed"))
@@ -406,6 +407,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'DELETE', body_data)
+                cdb_url = self.snippets.create_cdb_domain(tenant_id)
+                LOG.debug(_('Creating network url : %s'), cdb_url)
+                self._write_to_cdb(cdb_url, ["ne"])
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -451,6 +455,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 ip_range_start, ip_range_end, dns_ip, default_gateway)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
+                cdb_url = self.snippets.create_cdb_domain(tenant_id)
+                self._write_to_cdb(cdb_url, ["ne"])
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -484,6 +490,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     tenant_id, router_name)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
+                cdb_url = self.snippets.create_cdb_domain(tenant_id)
+                LOG.debug(_('Creating network url : %s'), cdb_url)
+                self._write_to_cdb(cdb_url, ["ne"])
 
             except:
                 err_message = _("PLUMgrid NOS communication failed: ")
@@ -522,6 +531,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             body_data = {}
             self.rest_conn.nos_rest_conn(nos_url,
                                          'DELETE', body_data)
+            LOG.debug(_('Creating network url : %s'), cdb_url)
+            self._write_to_cdb(cdb_url, ["ne"])
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -566,12 +577,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
 
+            cdb_url = self.snippets.create_cdb_domain(tenant_id)
+            LOG.debug(_('Creating network url : %s'), cdb_url)
+            self._write_to_cdb(cdb_url, ["ne"])
+
             # Create link between bridge - router
             nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
             body_data = self.snippets.create_link_body_data(
                 bridge_name, router_name, router_id, net_id)
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
+            self._write_to_cdb(cdb_url, ["properties", "link"])
 
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
@@ -613,6 +629,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self.rest_conn.nos_rest_conn(nos_url,
                                          'DELETE', body_data)
 
+            cdb_url = self.snippets.create_cdb_domain(tenant_id)
+            LOG.debug(_('Creating network url : %s'), cdb_url)
+            self._write_to_cdb(cdb_url, ["ne"])
+
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
             LOG.Exception(err_message)
@@ -648,6 +668,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
 
+            self._write_to_cdb(self.snippets.TENANT_MGR, ["tenants"])
+
             nos_url = self.snippets.BASE_NOS_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
             self.rest_conn.nos_rest_conn(nos_url,
@@ -660,11 +682,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
 
+            self._write_to_cdb(self.snippets.CONNECTIVITY, ["domain", "rule"], "level=1")
+
             # PLUMgrid creates Domain Rules
             nos_url = self.snippets.create_rule_url(tenant_id)
             body_data = self.snippets.create_rule_body_data(tenant_id)
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
+ 
+            self._write_to_cdb(self.snippets.PEM_MASTER, ["ifc_rule_logical"])
 
     def _get_json_data(self, tenant_id, json_path):
         nos_url = self.snippets.BASE_NOS_URL + tenant_id + json_path
@@ -713,3 +739,159 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         for i in xrange(32-mask_int,32):
             bits |= (1 << i)
         return "%d.%d.%d.%d" % ((bits & 0xff000000) >> 24, (bits & 0xff0000) >> 16, (bits & 0xff00) >> 8 , (bits & 0xff))
+
+    def _write_to_cdb(self, path, list_add_path, level=""):
+        """
+        Write to CDB accepts a path that needs to be added to CDB. It also takes a list_add_path
+        which determines the list of child paths under the "path" to add to CDB. It determines the 
+        CDB path to write this data. It does a get for each of the path in the argument. It removes
+        all the argument which are null/None/{} by calling _prune_read_only which recursively removes 
+        all the elements that are read-only.  It also removes all dynamic links like VM interface.
+        The processed data is broken into chunks and written to  CDB
+
+        @path -- path to write to CDB (/0/connectivity)
+        @list_add_path -- List of child path that needs to be added to CDB (link and ne)
+        @level --- Optional. Determines the level of http request. Default is no level specified in the request
+
+        Returns None
+        Raises PLUMgridException on PUt/GET/DELETE failures
+        """
+        LOG.debug(_('Write to cdb %s %s') % (path, list_add_path))
+        headers = {}
+        body_data = {}
+
+        # get the cdp path  that needs to written for this path
+        cdb_path = self.snippets.create_cdb_path(path, list_add_path)
+
+        LOG.debug(_('CDB path to write %s'), cdb_path)
+
+        # obtain the values of each of the element that we need to write in the path
+        list_resp = []
+        for elem in list_add_path:
+            if level:
+                url = "%s/%s?novolatile=true&%s" %(path, elem, level)
+            else:
+                url = "%s/%s?novolatile=true" %(path, elem)
+            LOG.debug(_('Creating URL %s'), url)
+            try:
+                resp = self.rest_conn.nos_rest_conn(url, 'GET', body_data)
+            except:
+                err_message = _("PLUMgrid NOS communication failed: ")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
+            list_resp.append(resp[2])
+
+        LOG.debug(_('Get Request %s') , list_resp)
+
+        # PUT the top level CDB if does not exists before
+        body_data = {"name" : "%s" % os.path.split(cdb_path)[1]}
+        LOG.debug(_('Data %s'), cdb_path)
+        try:
+            self.rest_conn.nos_rest_conn(cdb_path, 'PUT', body_data)
+        except:
+            err_message = _("PLUMgrid NOS communication failed: ")
+            LOG.Exception(err_message)
+            raise plum_excep.PLUMgridException(err_message)
+
+        # delete all the existing chunks in this path before adding new
+        new_path = cdb_path + "/chunks"
+        LOG.debug(_('New Path %s'), new_path)
+        try:
+            self.rest_conn.nos_rest_conn(new_path, 'DELETE', body_data)
+        except:
+            err_message = _("PLUMgrid NOS communication failed: ")
+            LOG.Exception(err_message)
+            raise plum_excep.PLUMgridException(err_message)
+
+        chunk_str = ""
+
+        i = 0
+        for data in list_resp:
+            json_data = simplejson.loads(data)
+
+            # below 2 lines are workaround for platform problem
+            # it removes all json element which is null or none
+            # it assumes platform returns all read-only values as None
+            self._prune_read_only(json_data)
+
+            str_resp = str(json_data)
+
+            # handle last element differently
+            if data is not list_resp[-1]:
+                chunk_str = chunk_str + "{'%s' :" % list_add_path[i] + str_resp + ","
+            else:
+                # if that first and last are the same, handle it differently
+                if len(list_resp) == 1:
+                    chunk_str = chunk_str + "{'%s' :" % list_add_path[i] + str_resp + "}"
+                else:
+                    chunk_str = chunk_str + "'%s' :" % list_add_path[i] + str_resp + "}"
+            i = i + 1
+
+        chunk_str = chunk_str.replace("\'", "&quot;")
+        LOG.debug(_('Chunk String %s') % chunk_str)
+        num_chunk = chunk_str.__len__()
+        chunk_size = 0
+        num_iter = num_chunk / self.snippets.CHUNK_SIZE
+
+        try:
+            self.rest_conn.nos_rest_conn(cdb_path + "/" + "number_of_chunks", 'PUT', num_iter + 1)
+        except:
+            err_message = _("PLUMgrid NOS communication failed: ")
+            LOG.Exception(err_message)
+            raise plum_excep.PLUMgridException(err_message)
+        for i in range(0, num_iter+1):
+            cdb_chunk_path = cdb_path + "/" + "chunks" + "/" + str(i)
+            cdb_chunk_data = {"data" :  "%s" % chunk_str[chunk_size:chunk_size + self.snippets.CHUNK_SIZE]}
+            LOG.debug(_('Write to CDB: path %s str %s ') % (cdb_chunk_path, cdb_chunk_data))
+            try:
+                self.rest_conn.nos_rest_conn(cdb_chunk_path, 'PUT', cdb_chunk_data)
+            except:
+                err_message = _("PLUMgrid NOS communication failed: ")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
+            chunk_size = chunk_size + self.snippets.CHUNK_SIZE
+
+    def _prune_read_only(self, data):
+        """
+        _prune_read_only accepts a json output and recursively tries to remove all read element which
+        are null/None. It also removes elements which has dynamic in the values.
+        
+        @data -- json string
+        Return
+            None
+        """
+        LOG.debug(_('Prune Read Only %s') % (data))
+        for key, value in data.items():
+            if isinstance(value, dict):
+                try:
+                    if value['ifc_type']  == 'dynamic':
+                        LOG.debug(_('del key %s value %s') % (key, value))
+                        del data[key]
+                except KeyError:
+                    pass
+                try:
+                    if value['ne_type']  == 'vm':
+                        LOG.debug(_('del key %s values %s') % (key, value))
+                        del data[key]
+                except KeyError:
+                    pass
+                try:
+                    if value['link_type']  == 'dynamic':
+                        LOG.debug(_('del key %s values %s') % (key, value))
+                        del data[key]
+                except KeyError:
+                    pass
+                if value == {}:
+                    del data[key]
+                else:
+                    self._prune_read_only(value)
+                    if value == {}:
+                        del data[key]
+            else:
+                if value is None or value == '' or value == {}:
+                    del data[key]
+                if value is False:
+                    data[key] = "false"
+
+    def _write_to_cdb(self, path, list_add_path, level = ""):
+        LOG.debug(_('NOP: Write to cdb %s %s') % (path, list_add_path))
