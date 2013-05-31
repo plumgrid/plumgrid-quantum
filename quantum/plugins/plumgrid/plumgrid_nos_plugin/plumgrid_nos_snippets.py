@@ -33,16 +33,24 @@ class DataNOSPLUMgrid():
     RULE_NOS_URL = '/0/pem_master/ifc_rule_logical/'
     RULE_NOS_CM_URL = '/0/connectivity/rule/'
     TENANT_NOS_URL = '/0/tenant_manager/tenants/'
-    CDB_BASE_URL = '/0/cdb/folder/'
+    CDB_BASE_URL = '/0/cdb/folder/config__/domain/'
+    TENANT_MGR = '/0/tenant_manager'
+    PEM_MASTER = '/0/pem_master'
+    CONNECTIVITY = '/0/connectivity'
+    CHUNK_SIZE = 500
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: NOS Body Data Creation'))
 
     def create_cdb_domain(self, tenant_id):
-        return self.CDB_BASE_URL + tenant_id
+        return self.BASE_NOS_URL + tenant_id
 
-    def create_cdb_topology(self, tenant_id):
-        return self.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
+    def create_cdb_path(self, path, add_path):
+        rep_path = path.replace("/", "__47__")
+        cdb_path = self.CDB_BASE_URL + rep_path
+        if 'properties' in add_path or 'link' in add_path:
+            cdb_path = cdb_path + "__"
+        return cdb_path
 
     def create_rule_url(self, tenant_id): #USED
         return self.RULE_NOS_URL + tenant_id[:6]
