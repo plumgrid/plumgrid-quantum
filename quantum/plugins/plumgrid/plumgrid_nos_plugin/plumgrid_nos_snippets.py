@@ -44,8 +44,8 @@ class DataNOSPLUMgrid():
     def create_cdb_topology(self, tenant_id):
         return self.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
 
-    def create_rule_url(self, tenant_id): #USED
-        return self.RULE_NOS_URL + tenant_id[:6]
+    def create_rule_url(self, tenant_id):
+        return self.RULE_NOS_URL + tenant_id + "_" + tenant_id[:6]
 
     def create_rule_cm_url(self, tenant_id):
         return self.RULE_NOS_CM_URL + tenant_id[:6]
