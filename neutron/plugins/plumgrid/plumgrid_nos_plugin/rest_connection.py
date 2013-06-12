@@ -19,7 +19,7 @@
 """
 Neutron PLUMgrid Plug-in for PLUMgrid Virtual Technology
 This plugin will forward authenticated REST API calls
-to the Network Operating System by PLUMgrid called NOS
+to the Network Operating System by PLUMgrid called Director
 """
 
 import httplib
@@ -34,52 +34,48 @@ LOG = logging.getLogger(__name__)
 
 
 class RestConnection(object):
-    """REST Connection to PLUMgrid NOS Server."""
+    """REST Connection to PLUMgrid Director Server."""
 
     def __init__(self, server, port, timeout):
-        LOG.debug(_('NeutronPluginPLUMgrid Status: REST Connection Started'))
+        LOG.debug(_('PLUMgrid Director Status: REST Connection Started'))
         self.server = server
         self.port = port
         self.timeout = timeout
 
-    def nos_rest_conn(self, nos_url, action, data, headers):
-        self.nos_url = nos_url
+    def director_rest_conn(self, director_url, action, data):
+        self.director_url = director_url
         body_data = json.dumps(data)
-        if not headers:
-            headers = {}
+        headers = {}
         headers['Content-type'] = 'application/json'
         headers['Accept'] = 'application/json'
 
-        LOG.debug(_("PLUMgrid_NOS_Server: %(server)s %(port)s %(action)s"),
+        LOG.debug(_("PLUMgrid_Director_Server: %(server)s %(port)s %(action)s"),
                   dict(server=self.server, port=self.port, action=action))
 
         conn = httplib.HTTPConnection(self.server, self.port,
                                       timeout=self.timeout)
         if conn is None:
-            LOG.error(_('PLUMgrid_NOS_Server: Could not establish HTTP '
+            LOG.error(_('PLUMgrid_Director_Server: Could not establish HTTP '
                         'connection'))
             return
 
         try:
-            LOG.debug(_("PLUMgrid_NOS_Server Sending Data: %(nos_url)s "
+            LOG.debug(_("PLUMgrid_Director_Server Sending Data: %(director_url)s "
                         "%(body_data)s %(headers)s"),
                       dict(
-                          nos_url=nos_url,
+                          director_url=director_url,
                           body_data=body_data,
                           headers=headers,
                       ))
-            conn.request(action, nos_url, body_data, headers)
+            conn.request(action, director_url, body_data, headers)
             resp = conn.getresponse()
             resp_str = resp.read()
 
-            LOG.debug(_("PLUMgrid_NOS_Server Connection Data: %(resp)s, "
+            LOG.debug(_("PLUMgrid_Director_Server Connection Data: %(resp)s, "
                         "%(resp_str)s"), dict(resp=resp, resp_str=resp_str))
 
             if resp.status is httplib.OK:
                 try:
-                    respdata = json.loads(resp_str)
-                    LOG.debug(_("PLUMgrid_NOS_Server Connection RESP: %s"),
-                              respdata)
                     pass
                 except ValueError:
                     err_message = _("PLUMgrid HTTP Connection Failed: ")
@@ -88,10 +84,10 @@ class RestConnection(object):
 
             ret = (resp.status, resp.reason, resp_str)
         except urllib2.HTTPError:
-            LOG.error(_('PLUMgrid_NOS_Server: %(action)s failure, %(e)r'))
+            LOG.error(_('PLUMgrid_Director_Server: %(action)s failure, %(e)r'))
             ret = 0, None, None, None
         conn.close()
-        LOG.debug(_("PLUMgrid_NOS_Server: status=%(status)d, "
+        LOG.debug(_("PLUMgrid_Director_Server: status=%(status)d, "
                   "reason=%(reason)r, ret=%(ret)s"),
                   {'status': ret[0], 'reason': ret[1], 'ret': ret[2]})
         return ret
