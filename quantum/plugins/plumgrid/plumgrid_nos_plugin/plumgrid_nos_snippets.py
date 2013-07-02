@@ -29,11 +29,14 @@ LOG = logging.getLogger(__name__)
 
 
 class DataNOSPLUMgrid():
+    BASE = '/0/'
     BASE_NOS_URL = '/0/connectivity/domain/'
     RULE_NOS_URL = '/0/pem_master/ifc_rule_logical/'
     RULE_NOS_CM_URL = '/0/connectivity/rule/'
     TENANT_NOS_URL = '/0/tenant_manager/tenants/'
     CDB_BASE_URL = '/0/cdb/folder/'
+    PEM_MASTER = '/0/pem_master'
+    TRUE_FLAG = True
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: NOS Body Data Creation'))
@@ -62,12 +65,11 @@ class DataNOSPLUMgrid():
                                     + tenant_id, "pgtag1": tenant_id}
         return body_data
 
-    def network_level_rule_body_data(self, tenant_id, net_id, bridge_name):
+    def network_level_rule_body_data(self, tenant_id, ne_name, criteria, match="None"):
         body_data = {"ne_dest": "/connectivity/domain/" + tenant_id + "/ne/"
-                                + bridge_name + "/action/action1", "rule": {
+                                + ne_name + "/action/action1", "rule": {
             "1": {"add_context": "second-level-rule",
-                  "criteria": "pgtag2", "match": net_id}}}
-
+                  "criteria": criteria, "match": match}}}
         return body_data
 
 
@@ -79,17 +81,24 @@ class DataNOSPLUMgrid():
 
     def create_tenant_domain_body_data(self, tenant_id):
         body_data = {"containers": {
-            tenant_id: {"enable": "true",
+            tenant_id: {"enable": self.TRUE_FLAG,
                         "qos_marking": "9",
                         "type": "Gold",
                         "property": "Container %s Property" % tenant_id,
                         "services_enabled": {
-                            "DHCP": {"service_type": "DHCP"}, "GW_NAT_1":
-                            {"service_type": "NAT"}}, "domains": {}, "rules": {}}}}
+                            "DHCP": {"service_type": "DHCP"}},
+                        "domains": {}, "rules": {}}}}
         return body_data
 
-    def create_ne_url(self, tenant_id, ne_id, ne):
-        return self.BASE_NOS_URL + tenant_id + "/ne/" + ne + "_" + ne_id[:6]
+    def update_tenant_domain_body_data(self, nat_pool_ip_start, nat_pool_ip_end):
+        body_data = {"service_name": "GW_NAT_1",
+                     "ip_start": nat_pool_ip_start,
+                     "ip_end": nat_pool_ip_end}
+        return body_data
+
+
+    def create_ne_url(self, tenant_id, net_id, ne):
+        return self.BASE_NOS_URL + tenant_id + "/ne/" + ne + "_" + net_id[:6]
 
     def create_link_url(self, tenant_id, prefix_link_id, sufix_link_id=""):
         return self.BASE_NOS_URL + tenant_id + "/link/" + prefix_link_id[:6] + sufix_link_id[:6]
@@ -100,6 +109,13 @@ class DataNOSPLUMgrid():
             "/ne/" + ne_start + "/ifc/" + ifc_name_ne_start[:6], "attachment2":
             "/ne/" + ne_end + "/ifc/" + ifc_name_ne_end[:6]}
         return body_data
+
+    def create_gen_link_body_data(self, first_ne_name, second_ne_name, first_ifc_name, second_ifc_name):
+        body_data = {"link_type": "static",
+                     "attachment1": "/ne/" + first_ne_name + "/ifc/" + first_ifc_name,
+                     "attachment2": "/ne/" + second_ne_name + "/ifc/" + second_ifc_name}
+        return body_data
+
 
     def create_bridge_body_data(self, tenant_id, bridge_name):
         body_data = {"ne_type": "bridge", "mobility": "true", "ne_dname": bridge_name, "ifc":
@@ -122,6 +138,29 @@ class DataNOSPLUMgrid():
                      "action": {"action1": {"action_text": "create_and_link_ifc(DYN_)"}},
                      "config": {"0": {"user_mac": self._create_mac()}},
                      "container_group": tenant_id, "topology_name": "quantum-based"}
+        return body_data
+
+    def create_nat_body_data(self, tenant_id, nat_name):
+        body_data = {"ne_type": "nat", "mobility": "true", "ne_dname": "nat-1", "ne_name": nat_name,
+                     "ifc": {"inside": {"ifc_type":"static",
+                                        "zone":"inside"},
+                             "outside": {"ifc_type":"static",
+                                         "zone":"outside"}},
+                     "outbound_cfg": {"outbound_cfg":{"allow_all": self.TRUE_FLAG,
+                                                      "allow_icmp":self.TRUE_FLAG}}}
+        return body_data
+
+    def create_wire_body_data(self, tenant_id, wire_name):
+        body_data = {"ne_type": "wire", "mobility": "true", "ne_group": "connector", "ne_name": wire_name,
+                     "ifc": {"ingress": {"ifc_type":"static",
+                                        "if_context": "IN"}},
+                     "action":{"action1":{"action_text":"create_and_link_ifc(DYN_)"}}}
+        return body_data
+
+    def create_gateway_body_data(self, tenant_id, gateway_name):
+        body_data = {"ne_type": "gateway", "mobility": "true", "ne_group": "connector", "ne_name": gateway_name,
+                     "ifc": {"ExtPort": {"ifc_type":"static"}},
+                     "action":{"action1":{"action_text":"create_and_link_ifc(DYN_)"}}}
         return body_data
 
     def _create_mac(self):

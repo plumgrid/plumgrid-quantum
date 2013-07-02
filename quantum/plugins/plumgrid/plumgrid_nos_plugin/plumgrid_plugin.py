@@ -118,13 +118,39 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # Propagate all L3 data into DB
             self._process_l3_create(context, network['network'], net['id'])
             self._extend_network_dict_l3(context, net)
-
             net_id = net["id"]
+
             try:
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
                           tenant_id, network["network"], net["id"])
-                # Create VND
-                self._create_vnd(tenant_id)
+
+                print "NETWORK TYPE"
+                print net
+
+                # Set rules for external connectivity
+                if net['router:external']:
+                    phy_mac_address = self._set_rules(tenant_id)
+                    self._create_vnd(tenant_id, True)
+
+                    # Insert Gateway Connector
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
+                    gateway_name = "gateway_" + net_id[:6]
+                    body_data = self.snippets.create_gateway_body_data(
+                        tenant_id, gateway_name)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Add Rule Port Connector
+                    # Add physical classification rule
+                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
+                    body_data = self.snippets.network_level_rule_body_data(
+                            tenant_id, gateway_name, "fab_ifc_mac", phy_mac_address)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                     'PUT', body_data)
+
+                else:
+                    # Create VND
+                    self._create_vnd(tenant_id, False)
 
                 # Add bridge to VND
                 nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
@@ -138,9 +164,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # Add bridge to VND
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
                 body_data = self.snippets.network_level_rule_body_data(
-                    tenant_id, net_id, bridge_name)
+                    tenant_id, bridge_name, "pgtag2", net_id)
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
+
 
                 # Saving Tenant - Domains in CDB
                 # Get the current domain
@@ -193,15 +220,28 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         Delete network core Quantum API
         """
         LOG.debug(_("QuantumPluginPLUMgrid Status: delete_network() called"))
-        super(QuantumPluginPLUMgridV2, self).get_network(context, net_id)
+        net = super(QuantumPluginPLUMgridV2, self).get_network(context, net_id)
+        net_extended = self._extend_network_dict_l3(context, net)
+
 
         with context.session.begin(subtransactions=True):
             # Plugin DB - Network Delete
             super(QuantumPluginPLUMgridV2,
                                 self).delete_network(context, net_id)
-
             tenant_id = self._get_tenant_id_for_create(context, net_id)
             try:
+                if net['router:external']:
+                    # Delete Gateway Connector
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
+                    body_data = {}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'DELETE', body_data)
+
+                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                     'DELETE', body_data)
+
+
                 bridge_name = "bridge_" + net_id[:6]
                 body_data = {}
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + bridge_name
@@ -233,6 +273,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             nets = super(QuantumPluginPLUMgridV2,
                          self).get_networks(context, filters, None, sorts,
                                             limit, marker, page_reverse)
+
             for net in nets:
                 self._extend_network_dict_l3(context, net)
 
@@ -244,20 +285,42 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         Create port core Quantum API
         """
         LOG.debug(_("QuantumPluginPLUMgrid Status: create_port() called"))
-
-        # Port operations on PLUMgrid NOS is an automatic operation from the
-        # VIF driver operations in Nova. It requires admin_state_up to be True
         port["port"]["admin_state_up"] = True
 
-        # Plugin DB - Port Create and Return port
-        q_port = super(QuantumPluginPLUMgridV2, self).create_port(context,
+        with context.session.begin(subtransactions=True):
+            # Plugin DB - Port Create and Return port
+            q_port = super(QuantumPluginPLUMgridV2, self).create_port(context,
                                                                   port)
+
+            try:
+                if q_port["device_owner"] == "network:router_gateway":
+                    LOG.debug(_("QuantumPluginPLUMgrid Status: Configuring Interface in Router"))
+                    # Create interface at Router
+                    router_id = q_port["device_id"]
+                    router_db =  self._get_router(context, router_id)
+                    tenant_id = router_db["tenant_id"]
+                    interface_ip = q_port["fixed_ips"][0]["ip_address"]
+                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    nos_url = nos_url + "/ifc/GatewayExt"
+                    # TODO: (Edgar) Need to get the right Mask for this Subnet
+                    body_data = { "ifc_type": "static", "ip_address": interface_ip,
+                                          "ip_address_mask": "255.0.0.0"}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                         'PUT', body_data)
+
+            except:
+                err_message = _("PLUMgrid NOS communication failed")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
+
+
         return self._port_viftype_binding(context, q_port)
 
     def get_port(self, context, id, fields=None):
         with context.session.begin(subtransactions=True):
             q_port = super(QuantumPluginPLUMgridV2, self).get_port(context, id,
                                                             fields)
+
             self._port_viftype_binding(context, q_port)
         return self._fields(q_port, fields)
 
@@ -276,12 +339,31 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         """
         LOG.debug(_("QuantumPluginPLUMgrid Status: update_port() called"))
 
-        # Port operations on PLUMgrid NOS is an automatic operation from the
-        # VIF driver operations in Nova.
+        with context.session.begin(subtransactions=True):
+            # Plugin DB - Port Update
+            q_port = super(QuantumPluginPLUMgridV2, self).update_port(context, port_id, port)
 
-        # Plugin DB - Port Update
-        q_port = super(QuantumPluginPLUMgridV2, self).update_port(
-            context, port_id, port)
+            try:
+                if q_port["device_owner"] == "network:router_gateway":
+                    LOG.debug(_("QuantumPluginPLUMgrid Status: Updating Interface in Router"))
+                    # Update interface at Router
+                    router_id = q_port["device_id"]
+                    router_db =  self._get_router(context, router_id)
+                    tenant_id = router_db["tenant_id"]
+                    interface_ip = q_port["fixed_ips"][0]["ip_address"]
+                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    nos_url = nos_url + "/ifc/GatewayExt"
+                    # TODO: (Edgar) Need to get the right Mask for this Subnet
+                    body_data = { "ifc_type": "static", "ip_address": interface_ip,
+                                          "ip_address_mask": "255.0.0.0"}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                         'PUT', body_data)
+
+            except:
+                err_message = _("PLUMgrid NOS communication failed")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
+
         return self._port_viftype_binding(context, q_port)
 
     def delete_port(self, context, port_id, l3_port_check=True):
@@ -291,11 +373,35 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         LOG.debug(_("QuantumPluginPLUMgrid Status: delete_port() called"))
 
-        # Port operations on PLUMgrid NOS is an automatic operation from the
-        # VIF driver operations in Nova.
 
-        # Plugin DB - Port Delete
-        super(QuantumPluginPLUMgridV2, self).delete_port(context, port_id)
+
+
+        with context.session.begin(subtransactions=True):
+            q_port = super(QuantumPluginPLUMgridV2, self).get_port(context, port_id)
+            print "Deleting PORT"
+            print q_port
+            # Plugin DB - Port Delete
+            super(QuantumPluginPLUMgridV2, self).delete_port(context, port_id)
+
+            try:
+                if q_port["device_owner"] == "network:router_gateway":
+                    LOG.debug(_("QuantumPluginPLUMgrid Status: Deleting Interface in Router"))
+                    # Delete interface at Router
+                    router_id = q_port["device_id"]
+                    router_db =  self._get_router(context, router_id)
+                    tenant_id = router_db["tenant_id"]
+                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    nos_url = nos_url + "/ifc/GatewayExt"
+                    # TODO: (Edgar) Need to get the right Mask for this Subnet
+                    body_data = {}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                         'DELETE', body_data)
+
+            except:
+                err_message = _("PLUMgrid NOS communication failed")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
+
 
     def create_subnet(self, context, subnet):
         """
@@ -314,18 +420,74 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             subnet_details = self._get_subnet(context, subnet["id"])
             net_id = subnet_details["network_id"]
             tenant_id = subnet_details["tenant_id"]
+            subnet_id = subnet["id"]
 
-
-            #Initial implementation for Floating IPs (emagana)
             self._extend_network_dict_l3(context, net)
-            if net['router:external']:
-                gateway_ip = subnet['gateway_ip']
-                network_address, length = subnet['cidr'].split('/')
 
             try:
                 if subnet['ip_version'] == 6:
                     raise q_exc.NotImplementedError(
                         _("PLUMgrid doesn't support IPv6."))
+
+                if net['router:external']:
+                    ip_range_dict = subnet['allocation_pools']
+                    ip_range_start = ip_range_dict[0].get('start')
+                    ip_range_end = ip_range_dict[0].get('end')
+                    self._update_nat_ip_pool(tenant_id, ip_range_start, ip_range_end)
+
+                    # Insert NAT element
+                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    nat_name = "GW_NAT_1-" + net_id[:6]
+                    bridge_name = "bridge_" + net_id[:6]
+                    body_data = self.snippets.create_nat_body_data(
+                    tenant_id, nat_name)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    #Create interface at Bridge
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                    nos_url = nos_url + "/ifc/" + subnet_id[:6]
+                    body_data = { "ifc_type": "static"}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Create link between Bridge - NAT
+                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, nat_name)
+                    body_data = self.snippets.create_gen_link_body_data(bridge_name, nat_name,
+                                                                        subnet_id[:6], "outside")
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Insert Wire Connector
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
+                    wire_name = "Wire_" + net_id[:6]
+                    body_data = self.snippets.create_wire_body_data(
+                        tenant_id, wire_name)
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Link between Wire and NAT
+                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, wire_name)
+                    body_data = self.snippets.create_gen_link_body_data(wire_name, nat_name,
+                                                                        "ingress", "inside")
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Create interface at Bridge
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                    nos_url = nos_url + "/ifc/GatewayConnector"
+                    body_data = { "ifc_type": "static"}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+                    # Link Gateway Connector with External Bridge
+                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, bridge_name)
+                    gateway_name = "gateway_" + net_id[:6]
+                    body_data = self.snippets.create_gen_link_body_data(bridge_name, gateway_name,
+                                                                        "GatewayConnector", "ExtPort")
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
 
                 if subnet['enable_dhcp'] == True:
                     # Add dhcp to VND
@@ -399,8 +561,27 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 context, subnet_id)
             tenant_id = self._get_tenant_id_for_create(context, subnet_id)
             net_id = subnet_details["network_id"]
+            net_extended = self.get_network(context, net_id)
+
+
+
 
             try:
+
+                if net_extended['router:external']:
+
+                    # Insert NAT element
+                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    body_data = {}
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'DELETE', body_data)
+
+
+                    # Delete Wire Connector
+                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
+                    self.rest_conn.nos_rest_conn(nos_url,
+                                                 'DELETE', body_data)
+
                 dhcp_name = "dhcp_" + net_id[:6]
                 body_data = {}
                 nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
@@ -477,7 +658,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self._create_vnd(tenant_id)
             # create router on the network controller
             try:
-                # Add bridge to VND
+                # Add Router to VND
                 nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                 router_name = "router_" + router_id[:6]
                 body_data = self.snippets.create_router_body_data(
@@ -500,8 +681,45 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         with context.session.begin(subtransactions=True):
             new_router = super(QuantumPluginPLUMgridV2,
                                self).update_router(context, router_id, router)
+
             # Update router in EVO Cube Director
-            # No operation needed in EVO Cue director for updating router
+            # Introduce the code to create the wire connector, create the router interface
+            # and add teh default route to the user router!!!  uff!!
+            print "UPDATING ROUTER, CONTEXT and OLD ROUTER"
+            print context
+            print router
+            print "NEW ROUTER"
+            print new_router
+
+            if new_router["external_gateway_info"]:
+                print "Creating Wire Connector"
+                tenant_id = new_router["tenant_id"]
+                print tenant_id
+                net_id = new_router["external_gateway_info"]["network_id"]
+                print net_id
+
+                # Insert Wire Connector
+                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
+                wire_name = "Wire_" + net_id[:6]
+                body_data = self.snippets.create_wire_body_data(tenant_id, wire_name)
+                self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+
+
+                # Link between Wire and Router
+                router_name = "router_" + router_id[:6]
+                nos_url = self.snippets.create_link_url(tenant_id, net_id, wire_name)
+                body_data = self.snippets.create_gen_link_body_data(wire_name, router_name,
+                                                                        "ingress", "GatewayExt")
+                self.rest_conn.nos_rest_conn(nos_url,
+                                                 'PUT', body_data)
+
+
+
+
+            for key in new_router.keys():
+                print key
+            for value in new_router.values():
+                print value
 
         # return updated router
         return new_router
@@ -512,6 +730,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         with context.session.begin(subtransactions=True):
             orig_router = self._get_router(context, router_id)
             tenant_id = orig_router["tenant_id"]
+            print orig_router
 
             super(QuantumPluginPLUMgridV2, self).delete_router(context, router_id)
 
@@ -632,8 +851,24 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
     def _get_plugin_version(self):
         return VERSION
 
-    def _create_vnd(self, tenant_id):
+    def _update_nat_ip_pool(self, tenant_id, nat_ip_start, nat_ip_end):
+        nos_url = self.snippets.TENANT_NOS_URL + tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
+        #self.rest_conn.nos_rest_conn(nos_url, 'DELETE', {})
+        body_data = self.snippets.update_tenant_domain_body_data(nat_ip_start, nat_ip_end)
+        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
 
+    def _set_rules(self, tenant_id):
+        # Set up Gateway Node(s)
+        # Create Logical and Physical Rules for Gateway
+        LOG.debug(_('QuantumPluginPLUMgrid Creating PLUMgrid External '
+                    'Routing Rules'))
+        #self._get_list_engine_nodes()
+        #self._get_list_gateway_nodes(self._get_list_engine_nodes())
+        phy_mac_address = self._set_phys_interfaces(self._get_list_gateway_nodes(self._get_list_engine_nodes()), tenant_id)
+        return phy_mac_address
+
+
+    def _create_vnd(self, tenant_id, port_connector=False):
         # Verify VND (Tenant_ID) does not exist in Director
         nos_url = self.snippets.BASE_NOS_URL + tenant_id
         body_data = {}
@@ -647,6 +882,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             tenant_data = body_data
             self.rest_conn.nos_rest_conn(nos_url,
                                          'PUT', body_data)
+
+            if port_connector:
+                print "Creating PORT CONNECTOR"
+                nos_url = self.snippets.TENANT_NOS_URL + tenant_id + "/containers/" + tenant_id
+                body_data = {"services_enabled": {
+                    "DHCP": {"service_type": "DHCP"},
+                    "GW_NAT_1": {"service_type": "NAT"},
+                    "Gateway": {"service_type": "gateway"}}}
+                self.rest_conn.nos_rest_conn(nos_url,
+                                         'PUT', body_data)
+
 
             nos_url = self.snippets.BASE_NOS_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
@@ -686,6 +932,81 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def _check_view_auth(self, context, resource, action):
         return policy.check(context, action, resource)
+
+
+    def _get_list_engine_nodes(self):
+        nos_url = self.snippets.PEM_MASTER + "/pe"
+        body_data = {}
+        json_data = self.rest_conn.nos_rest_conn(nos_url,
+                                         'GET', body_data)
+        return json.loads(json_data[2])
+        """
+        for engine_node in list_engine_nodes.keys():
+            print engine_node
+            list_engine_nodes = list_engine_nodes.append(engine_node)
+        return list_engine_nodes
+        """
+
+    def _get_list_gateway_nodes(self, list_engine_nodes):
+        list_gateways = []
+        for engine_node in list_engine_nodes.keys():
+            nos_url = self.snippets.BASE + engine_node + "/stats/stats"
+            body_data = {}
+            json_data = self.rest_conn.nos_rest_conn(nos_url,
+                                         'GET', body_data)
+            pems_dicc = json.loads(json_data[2])
+
+            if pems_dicc['role'] == 'gateway':
+                list_gateways.append(engine_node)
+        return list_gateways
+
+
+    def _set_phys_interfaces(self, list_gateways, tenant_id):
+        for gateway in list_gateways:
+            nos_url = self.snippets.BASE + gateway + "/ifc"
+            body_data = {}
+            json_data = self.rest_conn.nos_rest_conn(nos_url,
+                                         'GET', body_data)
+            pems_dict = json.loads(json_data[2])
+            physical_ints = pems_dict.keys()
+        for interface in physical_ints:
+            if pems_dict[interface]['ifc_type'] == 'access_phys':
+                mac_address_full = pems_dict[interface]['status']
+                mac_address = mac_address_full.split()[1][:17]
+                #mac_addresses.append(dict_physical)
+                self._set_mac_addresses_gateway(interface, mac_address)
+                self._create_log_rules(mac_address, tenant_id)
+                self._create_phys_rules(mac_address, interface, tenant_id)
+        print "MAC ADDRESS: "
+        print mac_address
+        return mac_address
+
+
+    def _set_mac_addresses_gateway(self, interface, mac_address):
+            nos_url = self.snippets.PEM_MASTER + "/device/" + mac_address
+            body_data = {"device_name": interface,
+                         "label": "gateway"}
+            self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+            print mac_address
+
+    def _create_log_rules(self, mac_address, tenant_id):
+        nos_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
+        vm_state = True
+        body_data = {"domain_dest": tenant_id,
+                     "log_ifc_type": "ACCESS_PHYS",
+                     "ignore_vm_state": vm_state,
+                     "phy_mac_addr": mac_address}
+        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+
+    def _create_phys_rules(self, mac_address, interface, tenant_id):
+        nos_url = self.snippets.PEM_MASTER + "/ifc_rule_physical/" + mac_address
+        body_data = {"domain_dest": tenant_id,
+                         "ifc_name": interface,
+                         "ifc_type": "ACCESS_PHYS",
+                         "mac_addr": mac_address,
+                         "pem_owned": 1}
+        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+
 
     def _network_admin_state(self, network):
         try:
