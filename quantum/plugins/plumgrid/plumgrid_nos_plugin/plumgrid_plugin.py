@@ -124,9 +124,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_('QuantumPluginPLUMgrid Status: %s, %s, %s'),
                           tenant_id, network["network"], net["id"])
 
-                print "NETWORK TYPE"
-                print net
-
                 # Set rules for external connectivity
                 if net['router:external']:
                     phy_mac_address = self._set_rules(tenant_id)
@@ -168,20 +165,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.nos_rest_conn(nos_url,
                                              'PUT', body_data)
 
-
-                # Saving Tenant - Domains in CDB
-                # Get the current domain
-                #TODO:(Edgar) Complete this code
-                """
-                LOG.debug(_('Getting domains from CDB'))
-                nos_url = self.snippets.CDB_BASE_URL + '__47__0__47__tenant_manager'
-                body_data = {}
-                tenants_cdb = self.rest_conn.nos_rest_conn(nos_url,
-                                             'GET', body_data)
-                print tenants_cdb
-                print tenant_data
-                """
-
             except:
                 err_message = _("PLUMgrid NOS communication failed")
                 LOG.Exception(err_message)
@@ -222,13 +205,13 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         LOG.debug(_("QuantumPluginPLUMgrid Status: delete_network() called"))
         net = super(QuantumPluginPLUMgridV2, self).get_network(context, net_id)
         net_extended = self._extend_network_dict_l3(context, net)
+        tenant_id = net["tenant_id"]
 
 
         with context.session.begin(subtransactions=True):
             # Plugin DB - Network Delete
             super(QuantumPluginPLUMgridV2,
                                 self).delete_network(context, net_id)
-            tenant_id = self._get_tenant_id_for_create(context, net_id)
             try:
                 if net['router:external']:
                     # Delete Gateway Connector
@@ -302,7 +285,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                     nos_url = nos_url + "/ifc/GatewayExt"
-                    # TODO: (Edgar) Need to get the right Mask for this Subnet
+
+                    # TODO: (Edgar) Generate Network Mask
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
                                           "ip_address_mask": "255.0.0.0"}
                     self.rest_conn.nos_rest_conn(nos_url,
@@ -373,13 +357,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         LOG.debug(_("QuantumPluginPLUMgrid Status: delete_port() called"))
 
-
-
-
         with context.session.begin(subtransactions=True):
             q_port = super(QuantumPluginPLUMgridV2, self).get_port(context, port_id)
-            print "Deleting PORT"
-            print q_port
+
             # Plugin DB - Port Delete
             super(QuantumPluginPLUMgridV2, self).delete_port(context, port_id)
 
@@ -396,6 +376,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     body_data = {}
                     self.rest_conn.nos_rest_conn(nos_url,
                                                          'DELETE', body_data)
+
+                    # Insert Wire Connector
+                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
 
             except:
                 err_message = _("PLUMgrid NOS communication failed")
@@ -459,8 +443,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                                  'PUT', body_data)
 
                     # Insert Wire Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
-                    wire_name = "Wire_" + net_id[:6]
+                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    wire_name = "Wire_EXT"
                     body_data = self.snippets.create_wire_body_data(
                         tenant_id, wire_name)
                     self.rest_conn.nos_rest_conn(nos_url,
@@ -490,7 +474,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
 
                 if subnet['enable_dhcp'] == True:
-                    # Add dhcp to VND
+                    # Add DHCP to VND
                     nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_name = "dhcp_" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
@@ -578,7 +562,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
 
                     # Delete Wire Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
+                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
                     self.rest_conn.nos_rest_conn(nos_url,
                                                  'DELETE', body_data)
 
@@ -684,23 +668,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
             # Update router in EVO Cube Director
             # Introduce the code to create the wire connector, create the router interface
-            # and add teh default route to the user router!!!  uff!!
-            print "UPDATING ROUTER, CONTEXT and OLD ROUTER"
-            print context
-            print router
-            print "NEW ROUTER"
-            print new_router
+            # and add teh default route to the user router!!!
 
             if new_router["external_gateway_info"]:
-                print "Creating Wire Connector"
                 tenant_id = new_router["tenant_id"]
-                print tenant_id
                 net_id = new_router["external_gateway_info"]["network_id"]
-                print net_id
 
                 # Insert Wire Connector
-                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "Wire")
-                wire_name = "Wire_" + net_id[:6]
+                nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                wire_name = "Wire_EXT"
                 body_data = self.snippets.create_wire_body_data(tenant_id, wire_name)
                 self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
 
@@ -713,14 +689,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.nos_rest_conn(nos_url,
                                                  'PUT', body_data)
 
-
-
-
-            for key in new_router.keys():
-                print key
-            for value in new_router.values():
-                print value
-
         # return updated router
         return new_router
 
@@ -730,11 +698,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         with context.session.begin(subtransactions=True):
             orig_router = self._get_router(context, router_id)
             tenant_id = orig_router["tenant_id"]
-            print orig_router
 
             super(QuantumPluginPLUMgridV2, self).delete_router(context, router_id)
 
-        # delete from network ctrl. Remote error on delete is ignored
         try:
             router_name = "router_" + router_id[:6]
             nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + router_name
@@ -832,6 +798,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             self.rest_conn.nos_rest_conn(nos_url,
                                          'DELETE', body_data)
 
+            # Insert Wire Connector
+            nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+            self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
+
         except:
             err_message = _("PLUMgrid NOS communication failed: ")
             LOG.Exception(err_message)
@@ -884,7 +854,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                          'PUT', body_data)
 
             if port_connector:
-                print "Creating PORT CONNECTOR"
                 nos_url = self.snippets.TENANT_NOS_URL + tenant_id + "/containers/" + tenant_id
                 body_data = {"services_enabled": {
                     "DHCP": {"service_type": "DHCP"},
@@ -940,12 +909,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         json_data = self.rest_conn.nos_rest_conn(nos_url,
                                          'GET', body_data)
         return json.loads(json_data[2])
-        """
-        for engine_node in list_engine_nodes.keys():
-            print engine_node
-            list_engine_nodes = list_engine_nodes.append(engine_node)
-        return list_engine_nodes
-        """
+
 
     def _get_list_gateway_nodes(self, list_engine_nodes):
         list_gateways = []
@@ -977,8 +941,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self._set_mac_addresses_gateway(interface, mac_address)
                 self._create_log_rules(mac_address, tenant_id)
                 self._create_phys_rules(mac_address, interface, tenant_id)
-        print "MAC ADDRESS: "
-        print mac_address
         return mac_address
 
 
@@ -987,7 +949,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             body_data = {"device_name": interface,
                          "label": "gateway"}
             self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
-            print mac_address
 
     def _create_log_rules(self, mac_address, tenant_id):
         nos_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
