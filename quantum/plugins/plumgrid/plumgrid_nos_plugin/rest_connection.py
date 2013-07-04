@@ -17,9 +17,9 @@
 # @author: Brenden Blanco, bblanco@plumgrid.com, PLUMgrid, Inc.
 
 """
-Quantum PLUMgrid Plug-in for PLUMgrid Virtual Technology
-This plugin will forward authenticated REST API calls
-to the Network Operating System by PLUMgrid called NOS
+Quantum PLUMgrid Platform Plugin for Virtual Networking Infrastructure.
+This plugin will forward authenticated REST API calls from Quantum to
+PLUMgrid Director.
 """
 
 import httplib
@@ -34,7 +34,7 @@ LOG = logging.getLogger(__name__)
 
 
 class RestConnection(object):
-    """REST Connection to PLUMgrid NOS Server."""
+    """REST Connection to PLUMgrid Director Server."""
 
     def __init__(self, server, port, timeout):
         LOG.debug(_('QuantumPluginPLUMgrid Status: REST Connection Started'))
@@ -42,27 +42,27 @@ class RestConnection(object):
         self.port = port
         self.timeout = timeout
 
-    def nos_rest_conn(self, nos_url, action, data):
-        self.nos_url = nos_url
+    def director_rest_conn(self, director_url, action, data):
+        self.director_url = director_url
         body_data = json.dumps(data)
         headers = {}
         headers['Content-type'] = 'application/json'
         headers['Accept'] = 'application/json'
 
-        LOG.debug(_("PLUMgrid_NOS_Server: %s %s %s"), self.server, self.port,
+        LOG.debug(_("PLUMgrid_Director: %s %s %s"), self.server, self.port,
                   action)
 
         conn = httplib.HTTPConnection(self.server, self.port,
                                       timeout=self.timeout)
         if conn is None:
-            LOG.error(_('PLUMgrid_NOS_Server: Could not establish HTTP '
+            LOG.error(_('PLUMgrid_Director: Could not establish HTTP '
                         'connection'))
             return
 
         try:
-            LOG.debug(_("PLUMgrid_NOS_Server Sending Data: %s %s %s"),
-                      nos_url, body_data, headers)
-            conn.request(action, nos_url, body_data, headers)
+            LOG.debug(_("PLUMgrid_Director Sending Data: %s %s %s"),
+                      director_url, body_data, headers)
+            conn.request(action, director_url, body_data, headers)
             resp = conn.getresponse()
             resp_str = resp.read()
 
@@ -76,10 +76,10 @@ class RestConnection(object):
 
             ret = (resp.status, resp.reason, resp_str)
         except urllib2.HTTPError, e:
-            LOG.error(_('PLUMgrid_NOS_Server: %(action)s failure, %(e)r'))
+            LOG.error(_('PLUMgrid_Director: %(action)s failure, %(e)r'))
             ret = 0, None, None, None
         conn.close()
-        LOG.debug(_("PLUMgrid_NOS_Server: status=%(status)d, "
+        LOG.debug(_("PLUMgrid_Director: status=%(status)d, "
                   "reason=%(reason)r, ret=%(ret)s"),
                   {'status': ret[0], 'reason': ret[1], 'ret': ret[2]})
         return ret

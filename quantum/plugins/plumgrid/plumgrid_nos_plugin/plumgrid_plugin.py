@@ -16,17 +16,15 @@
 # @author: Edgar Magana, emagana@plumgrid.com, PLUMgrid, Inc.
 
 """
-Quantum PLUMgrid Plug-in for PLUMgrid Virtual Technology
-This plugin will forward authenticated REST API calls
-to the Network Operating System by PLUMgrid called NOS
+Quantum PLUMgrid Platform Plugin for Virtual Networking Infrastructure
+PLUMgrid plugin will forward authenticated REST API calls from Quantum to
+PLUMgrid Director.
 """
 
-import sys
 
 from oslo.config import cfg
 import json
 import re
-import sys
 
 from quantum.common import exceptions as q_exc
 from quantum.db import api as db
@@ -45,20 +43,20 @@ from quantum import policy
 LOG = logging.getLogger(__name__)
 
 
-nos_server_opts = [
-    cfg.StrOpt('nos_server', default='localhost',
-               help=_("PLUMgrid NOS server to connect to")),
-    cfg.StrOpt('nos_server_port', default='8080',
-               help=_("PLUMgrid NOS server port to connect to")),
+director_server_opts = [
+    cfg.StrOpt('director_server', default='localhost',
+               help=_("PLUMgrid Director server to connect to")),
+    cfg.StrOpt('director_server_port', default='8080',
+               help=_("PLUMgrid Director server port to connect to")),
     cfg.StrOpt('username', default='username',
-               help=_("PLUMgrid NOS admin username")),
+               help=_("PLUMgrid Director admin username")),
     cfg.StrOpt('password', default='password', secret=True,
-               help=_("PLUMgrid NOS admin password")),
+               help=_("PLUMgrid Director admin password")),
     cfg.IntOpt('servertimeout', default=5,
-               help=_("PLUMgrid NOS server timeout")),]
+               help=_("PLUMgrid Director server timeout")),]
 
 
-cfg.CONF.register_opts(nos_server_opts, "PLUMgridNOS")
+cfg.CONF.register_opts(director_server_opts, "PLUMgridDirector")
 
 
 class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
@@ -72,17 +70,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status: Starting Plugin'))
 
-        # PLUMgrid NOS configuration
-        nos_plumgrid = cfg.CONF.PLUMgridNOS.nos_server
-        nos_port = cfg.CONF.PLUMgridNOS.nos_server_port
-        timeout = cfg.CONF.PLUMgridNOS.servertimeout
-        self.snippets = plumgrid_nos_snippets.DataNOSPLUMgrid()
+        # PLUMgrid Director configuration
+        director_plumgrid = cfg.CONF.PLUMgridDirector.director_server
+        director_port = cfg.CONF.PLUMgridDirector.director_server_port
+        timeout = cfg.CONF.PLUMgridDirector.servertimeout
+        self.snippets = plumgrid_nos_snippets.DataDirectorPLUMgrid()
 
         # TODO: (Edgar) These are placeholders for next PLUMgrid release
-        nos_username = cfg.CONF.PLUMgridNOS.username
-        nos_password = cfg.CONF.PLUMgridNOS.password
-        self.rest_conn = rest_connection.RestConnection(nos_plumgrid,
-                                                        nos_port, timeout)
+        director_username = cfg.CONF.PLUMgridDirector.username
+        director_password = cfg.CONF.PLUMgridDirector.password
+        self.rest_conn = rest_connection.RestConnection(director_plumgrid,
+                                                        director_port, timeout)
         if self.rest_conn is None:
             raise SystemExit(_('QuantumPluginPLUMgrid Status: '
                                'Aborting Plugin'))
@@ -91,11 +89,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # Plugin DB initialization
             db.configure_db()
 
-            # PLUMgrid NOS info validation
-            LOG.info(_('QuantumPluginPLUMgrid NOS: %s'), nos_plumgrid)
-            if not nos_plumgrid:
+            # PLUMgrid Director info validation
+            LOG.info(_('QuantumPluginPLUMgrid Director: %s'), director_plumgrid)
+            if not director_plumgrid:
                 raise SystemExit(_('QuantumPluginPLUMgrid Status: '
-                                   'NOS value is missing in config file'))
+                                   'Director value is missing in config file'))
 
             LOG.debug(_('QuantumPluginPLUMgrid Status: Quantum server with '
                         'PLUMgrid Plugin has started'))
@@ -130,19 +128,19 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self._create_vnd(tenant_id, True)
 
                     # Insert Gateway Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
                     gateway_name = "gateway_" + net_id[:6]
                     body_data = self.snippets.create_gateway_body_data(
                         tenant_id, gateway_name)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Add Rule Port Connector
                     # Add physical classification rule
-                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
+                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
                     body_data = self.snippets.network_level_rule_body_data(
                             tenant_id, gateway_name, "fab_ifc_mac", phy_mac_address)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                      'PUT', body_data)
 
                 else:
@@ -150,23 +148,23 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self._create_vnd(tenant_id, False)
 
                 # Add bridge to VND
-                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
                 bridge_name = "bridge_" + net_id[:6]
                 body_data = self.snippets.create_bridge_body_data(
                     tenant_id, bridge_name)
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
                 # Add classification rule
                 # Add bridge to VND
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
+                director_url = self.snippets.BASE_Director_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
                 body_data = self.snippets.network_level_rule_body_data(
                     tenant_id, bridge_name, "pgtag2", net_id)
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed")
+                err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -215,27 +213,27 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 if net['router:external']:
                     # Delete Gateway Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "gateway")
                     body_data = {}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
 
-                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
+                    self.rest_conn.director_rest_conn(director_url,
                                                      'DELETE', body_data)
 
 
                 bridge_name = "bridge_" + net_id[:6]
                 body_data = {}
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + bridge_name
-                self.rest_conn.nos_rest_conn(nos_url,
+                director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/" + bridge_name
+                self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
-                self.rest_conn.nos_rest_conn(nos_url,
+                director_url = self.snippets.BASE_Director_URL + tenant_id + "/properties/rule_group/" + net_id[:6]
+                self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed")
+                err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -283,17 +281,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     router_db =  self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
-                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-                    nos_url = nos_url + "/ifc/GatewayExt"
+                    director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    director_url = director_url + "/ifc/GatewayExt"
 
                     # TODO: (Edgar) Generate Network Mask
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
                                           "ip_address_mask": "255.0.0.0"}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed")
+                err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -335,16 +333,16 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     router_db =  self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
-                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-                    nos_url = nos_url + "/ifc/GatewayExt"
+                    director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    director_url = director_url + "/ifc/GatewayExt"
                     # TODO: (Edgar) Need to get the right Mask for this Subnet
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
                                           "ip_address_mask": "255.0.0.0"}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed")
+                err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -370,19 +368,19 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     router_id = q_port["device_id"]
                     router_db =  self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
-                    nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-                    nos_url = nos_url + "/ifc/GatewayExt"
+                    director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                    director_url = director_url + "/ifc/GatewayExt"
                     # TODO: (Edgar) Need to get the right Mask for this Subnet
                     body_data = {}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                          'DELETE', body_data)
 
                     # Insert Wire Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-                    self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
+                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed")
+                err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -420,62 +418,62 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self._update_nat_ip_pool(tenant_id, ip_range_start, ip_range_end)
 
                     # Insert NAT element
-                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
                     nat_name = "GW_NAT_1-" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
                     body_data = self.snippets.create_nat_body_data(
                     tenant_id, nat_name)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     #Create interface at Bridge
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-                    nos_url = nos_url + "/ifc/" + subnet_id[:6]
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                    director_url = director_url + "/ifc/" + subnet_id[:6]
                     body_data = { "ifc_type": "static"}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Create link between Bridge - NAT
-                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, nat_name)
+                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, nat_name)
                     body_data = self.snippets.create_gen_link_body_data(bridge_name, nat_name,
                                                                         subnet_id[:6], "outside")
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Insert Wire Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
                     wire_name = "Wire_EXT"
                     body_data = self.snippets.create_wire_body_data(
                         tenant_id, wire_name)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Link between Wire and NAT
-                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, wire_name)
+                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, wire_name)
                     body_data = self.snippets.create_gen_link_body_data(wire_name, nat_name,
                                                                         "ingress", "inside")
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Create interface at Bridge
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-                    nos_url = nos_url + "/ifc/GatewayConnector"
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                    director_url = director_url + "/ifc/GatewayConnector"
                     body_data = { "ifc_type": "static"}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Link Gateway Connector with External Bridge
-                    nos_url = self.snippets.create_link_url(tenant_id, subnet_id, bridge_name)
+                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, bridge_name)
                     gateway_name = "gateway_" + net_id[:6]
                     body_data = self.snippets.create_gen_link_body_data(bridge_name, gateway_name,
                                                                         "GatewayConnector", "ExtPort")
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
 
                 if subnet['enable_dhcp'] == True:
                     # Add DHCP to VND
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_name = "dhcp_" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
                     dhcp_server_ip = "1.0.0.1"
@@ -488,18 +486,18 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     body_data = self.snippets.create_dhcp_body_data(
                         dhcp_name, dhcp_server_ip, dhcp_server_mask,
                         ip_range_start, ip_range_end, dns_ip, default_gateway)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Create link between bridge - dhcp
-                    nos_url = self.snippets.create_link_url(tenant_id, net_id)
+                    director_url = self.snippets.create_link_url(tenant_id, net_id)
                     body_data = self.snippets.create_link_body_data(
                         bridge_name, dhcp_name)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Add dhcp with values to VND
-                    nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
                     mask = subnet['cidr'].split("/")
                     dhcp_server_mask = self._get_mask_from_subnet(mask[1])
@@ -517,14 +515,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     body_data = self.snippets.create_dhcp_body_data(
                     dhcp_name, dhcp_server_ip, dhcp_server_mask,
                     ip_range_start, ip_range_end, dns_ip, default_gateway)
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
                 elif subnet['enable_dhcp'] == False:
                     LOG.debug(_("DHCP has NOT been deployed"))
 
             except:
-                err_message = _("PLUMgrid NOS communication failed: ")
+                err_message = _("PLUMgrid Director communication failed: ")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -555,25 +553,25 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 if net_extended['router:external']:
 
                     # Insert NAT element
-                    nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
                     body_data = {}
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
 
 
                     # Delete Wire Connector
-                    nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-                    self.rest_conn.nos_rest_conn(nos_url,
+                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
 
                 dhcp_name = "dhcp_" + net_id[:6]
                 body_data = {}
-                nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + dhcp_name
-                self.rest_conn.nos_rest_conn(nos_url,
+                director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/" + dhcp_name
+                self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed: ")
+                err_message = _("PLUMgrid Director communication failed: ")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -598,7 +596,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 # PLUMgrid Server does not support updating resources yet
                 dhcp_name = "dhcp_" + net_id[:6]
-                nos_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                 dhcp_server_ip = self._get_dhcp_ip(new_subnet['cidr'])
                 mask = new_subnet['cidr'].split("/")
                 dhcp_server_mask = self._get_mask_from_subnet(mask[1])
@@ -614,11 +612,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 body_data = self.snippets.create_dhcp_body_data(
                 dhcp_name, dhcp_server_ip, dhcp_server_mask,
                 ip_range_start, ip_range_end, dns_ip, default_gateway)
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed: ")
+                err_message = _("PLUMgrid Director communication failed: ")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -643,15 +641,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # create router on the network controller
             try:
                 # Add Router to VND
-                nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                 router_name = "router_" + router_id[:6]
                 body_data = self.snippets.create_router_body_data(
                     tenant_id, router_name)
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
             except:
-                err_message = _("PLUMgrid NOS communication failed: ")
+                err_message = _("PLUMgrid Director communication failed: ")
                 LOG.Exception(err_message)
                 raise plum_excep.PLUMgridException(err_message)
 
@@ -675,18 +673,18 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 net_id = new_router["external_gateway_info"]["network_id"]
 
                 # Insert Wire Connector
-                nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
                 wire_name = "Wire_EXT"
                 body_data = self.snippets.create_wire_body_data(tenant_id, wire_name)
-                self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+                self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
 
                 # Link between Wire and Router
                 router_name = "router_" + router_id[:6]
-                nos_url = self.snippets.create_link_url(tenant_id, net_id, wire_name)
+                director_url = self.snippets.create_link_url(tenant_id, net_id, wire_name)
                 body_data = self.snippets.create_gen_link_body_data(wire_name, router_name,
                                                                         "ingress", "GatewayExt")
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
         # return updated router
@@ -703,109 +701,117 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         try:
             router_name = "router_" + router_id[:6]
-            nos_url = self.snippets.BASE_NOS_URL + tenant_id + "/ne/" + router_name
+            director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/" + router_name
             body_data = {}
-            self.rest_conn.nos_rest_conn(nos_url,
+            self.rest_conn.director_rest_conn(director_url,
                                          'DELETE', body_data)
 
         except:
-            err_message = _("PLUMgrid NOS communication failed: ")
+            err_message = _("PLUMgrid Director communication failed: ")
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
 
     def add_router_interface(self, context, router_id, interface_info):
 
         LOG.debug(_("QuantumPluginPLUMgrid: add_router_interface() called"))
+        with context.session.begin(subtransactions=True):
 
-        # Validate args
-        router = self._get_router(context, router_id)
-        tenant_id = router['tenant_id']
+            # Validate args
+            router = self._get_router(context, router_id)
+            tenant_id = router['tenant_id']
 
-        # create interface in DB
-        int_router = super(QuantumPluginPLUMgridV2,
-                                   self).add_router_interface(context,
-                                                              router_id,
-                                                              interface_info)
-        port = self._get_port(context, int_router['port_id'])
-        net_id = port['network_id']
-        interface_ip = port['fixed_ips'][0]['ip_address']
+            # create interface in DB
+            int_router = super(QuantumPluginPLUMgridV2,
+                                       self).add_router_interface(context,
+                                                                  router_id,
+                                                                  interface_info)
+            port = self._get_port(context, int_router['port_id'])
+            net_id = port['network_id']
+            interface_ip = port['fixed_ips'][0]['ip_address']
 
 
-        # create interface on the network controller
-        try:
-            bridge_name = "bridge_" + net_id[:6]
-            router_name = "router_" + router_id[:6]
+            # create interface on the network controller
+            try:
+                bridge_name = "bridge_" + net_id[:6]
+                router_name = "router_" + router_id[:6]
 
-            # Create interface at router
-            nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-            nos_url = nos_url + "/ifc/" + net_id[:6]
-            body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                          "ip_address_mask": "255.255.255.0"}
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data)
+                # Create interface at router
+                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = director_url + "/ifc/" + net_id[:6]
+                body_data = { "ifc_type": "static", "ip_address": interface_ip,
+                              "ip_address_mask": "255.0.0.0"}
+                self.rest_conn.director_rest_conn(director_url,
+                                             'PUT', body_data)
 
-            #Create interface at Bridge
-            nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-            nos_url = nos_url + "/ifc/" + router_id[:6]
-            body_data = { "ifc_type": "static"}
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data)
+                #Create interface at Bridge
+                director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                director_url = director_url + "/ifc/" + router_id[:6]
+                body_data = { "ifc_type": "static"}
+                self.rest_conn.director_rest_conn(director_url,
+                                             'PUT', body_data)
 
-            # Create link between bridge - router
-            nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
-            body_data = self.snippets.create_link_body_data(
-                bridge_name, router_name, router_id, net_id)
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'PUT', body_data)
+                # Create link between bridge - router
+                director_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+                body_data = self.snippets.create_link_body_data(
+                    bridge_name, router_name, router_id, net_id)
+                self.rest_conn.director_rest_conn(director_url,
+                                             'PUT', body_data)
 
-        except:
-            err_message = _("PLUMgrid NOS communication failed: ")
-            LOG.Exception(err_message)
-            raise plum_excep.PLUMgridException(err_message)
+            except:
+                err_message = _("PLUMgrid Director communication failed: ")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
 
         return int_router
 
     def remove_router_interface(self, context, router_id, interface_info):
 
         LOG.debug(_("QuantumPluginPLUMgrid: remove_router_interface() called"))
+        with context.session.begin(subtransactions=True):
 
-        router = self._get_router(context, router_id)
-        tenant_id = router['tenant_id']
-        port = self._get_port(context, interface_info['port_id'])
-        net_id = port['network_id']
+            router = self._get_router(context, router_id)
+            tenant_id = router['tenant_id']
+            if 'port_id' in interface_info:
+                port = self._get_port(context, interface_info['port_id'])
+                net_id = port['network_id']
 
-        # remove router in DB
-        del_int_router = super(QuantumPluginPLUMgridV2,
-                              self).remove_router_interface(context,
-                                                            router_id,
-                                                            interface_info)
-        try:
-            # Delete Link
-            body_data = {}
-            nos_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data)
+            elif 'subnet_id' in interface_info:
+                subnet_id = interface_info['subnet_id']
+                subnet = self._get_subnet(context, subnet_id)
+                net_id = subnet['network_id']
 
-            # Delete Interface Bridge
-            nos_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-            nos_url = nos_url + "/ifc/" + router_id[:6]
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data)
+            # remove router in DB
+            del_int_router = super(QuantumPluginPLUMgridV2,
+                                  self).remove_router_interface(context,
+                                                                router_id,
+                                                                interface_info)
+            try:
+                # Delete Link
+                body_data = {}
+                director_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+                self.rest_conn.director_rest_conn(director_url,
+                                             'DELETE', body_data)
 
-            # Delete Interface Router
-            nos_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
-            nos_url = nos_url + "/ifc/" + net_id[:6]
-            self.rest_conn.nos_rest_conn(nos_url,
-                                         'DELETE', body_data)
+                # Delete Interface Bridge
+                director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                director_url = director_url + "/ifc/" + router_id[:6]
+                self.rest_conn.director_rest_conn(director_url,
+                                             'DELETE', body_data)
 
-            # Insert Wire Connector
-            nos_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-            self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
+                # Delete Interface Router
+                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = director_url + "/ifc/" + net_id[:6]
+                self.rest_conn.director_rest_conn(director_url,
+                                             'DELETE', body_data)
 
-        except:
-            err_message = _("PLUMgrid NOS communication failed: ")
-            LOG.Exception(err_message)
-            raise plum_excep.PLUMgridException(err_message)
+                # Insert Wire Connector
+                director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
+
+            except:
+                err_message = _("PLUMgrid Director communication failed: ")
+                LOG.Exception(err_message)
+                raise plum_excep.PLUMgridException(err_message)
 
         return del_int_router
     
@@ -822,10 +828,10 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         return VERSION
 
     def _update_nat_ip_pool(self, tenant_id, nat_ip_start, nat_ip_end):
-        nos_url = self.snippets.TENANT_NOS_URL + tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
-        #self.rest_conn.nos_rest_conn(nos_url, 'DELETE', {})
+        director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
+        #self.rest_conn.director_rest_conn(director_url, 'DELETE', {})
         body_data = self.snippets.update_tenant_domain_body_data(nat_ip_start, nat_ip_end)
-        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+        self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _set_rules(self, tenant_id):
         # Set up Gateway Node(s)
@@ -840,59 +846,59 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def _create_vnd(self, tenant_id, port_connector=False):
         # Verify VND (Tenant_ID) does not exist in Director
-        nos_url = self.snippets.BASE_NOS_URL + tenant_id
+        director_url = self.snippets.BASE_Director_URL + tenant_id
         body_data = {}
-        resp = self.rest_conn.nos_rest_conn(nos_url,
+        resp = self.rest_conn.director_rest_conn(director_url,
                                             'GET', body_data)
         resp_dict = json.loads(resp[2])
         if not tenant_id in resp_dict.values():
             LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
-            nos_url = self.snippets.TENANT_NOS_URL + tenant_id
+            director_url = self.snippets.TENANT_Director_URL + tenant_id
             body_data = self.snippets.create_tenant_domain_body_data(tenant_id)
             tenant_data = body_data
-            self.rest_conn.nos_rest_conn(nos_url,
+            self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
             if port_connector:
-                nos_url = self.snippets.TENANT_NOS_URL + tenant_id + "/containers/" + tenant_id
+                director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id
                 body_data = {"services_enabled": {
                     "DHCP": {"service_type": "DHCP"},
                     "GW_NAT_1": {"service_type": "NAT"},
                     "Gateway": {"service_type": "gateway"}}}
-                self.rest_conn.nos_rest_conn(nos_url,
+                self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
 
-            nos_url = self.snippets.BASE_NOS_URL + tenant_id
+            director_url = self.snippets.BASE_Director_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
-            self.rest_conn.nos_rest_conn(nos_url,
+            self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
             # PLUMgrid creates Domain Rules
             LOG.debug(_('Creating Rule for Tenant: %s'), tenant_id)
-            nos_url = self.snippets.create_rule_cm_url(tenant_id)
+            director_url = self.snippets.create_rule_cm_url(tenant_id)
             body_data = self.snippets.create_rule_cm_body_data(tenant_id)
-            self.rest_conn.nos_rest_conn(nos_url,
+            self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
             # PLUMgrid creates Domain Rules
-            nos_url = self.snippets.create_rule_url(tenant_id)
+            director_url = self.snippets.create_rule_url(tenant_id)
             body_data = self.snippets.create_rule_body_data(tenant_id)
-            self.rest_conn.nos_rest_conn(nos_url,
+            self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
     def _get_json_data(self, tenant_id, json_path):
-        nos_url = self.snippets.BASE_NOS_URL + tenant_id + json_path
+        director_url = self.snippets.BASE_Director_URL + tenant_id + json_path
         body_data = {}
-        json_data = self.rest_conn.nos_rest_conn(nos_url,
+        json_data = self.rest_conn.director_rest_conn(director_url,
                                                     'GET', body_data)
         return json.loads(json_data[2])
 
-    def _cleaning_nos_subnet_structure(self, body_data, net_id):
+    def _cleaning_director_subnet_structure(self, body_data, net_id):
         domain_structure = ['/properties', '/link', '/ne']
         for structure in domain_structure:
-            nos_url = self.snippets.BASE_NOS_URL + net_id + structure
-            self.rest_conn.nos_rest_conn(nos_url, 'DELETE', body_data)
+            director_url = self.snippets.BASE_Director_URL + net_id + structure
+            self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
 
     def _port_viftype_binding(self, context, port):
         if self._check_view_auth(context, port, self.binding_view):
@@ -904,9 +910,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
 
     def _get_list_engine_nodes(self):
-        nos_url = self.snippets.PEM_MASTER + "/pe"
+        director_url = self.snippets.PEM_MASTER + "/pe"
         body_data = {}
-        json_data = self.rest_conn.nos_rest_conn(nos_url,
+        json_data = self.rest_conn.director_rest_conn(director_url,
                                          'GET', body_data)
         return json.loads(json_data[2])
 
@@ -914,9 +920,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
     def _get_list_gateway_nodes(self, list_engine_nodes):
         list_gateways = []
         for engine_node in list_engine_nodes.keys():
-            nos_url = self.snippets.BASE + engine_node + "/stats/stats"
+            director_url = self.snippets.BASE + engine_node + "/stats/stats"
             body_data = {}
-            json_data = self.rest_conn.nos_rest_conn(nos_url,
+            json_data = self.rest_conn.director_rest_conn(director_url,
                                          'GET', body_data)
             pems_dicc = json.loads(json_data[2])
 
@@ -927,9 +933,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def _set_phys_interfaces(self, list_gateways, tenant_id):
         for gateway in list_gateways:
-            nos_url = self.snippets.BASE + gateway + "/ifc"
+            director_url = self.snippets.BASE + gateway + "/ifc"
             body_data = {}
-            json_data = self.rest_conn.nos_rest_conn(nos_url,
+            json_data = self.rest_conn.director_rest_conn(director_url,
                                          'GET', body_data)
             pems_dict = json.loads(json_data[2])
             physical_ints = pems_dict.keys()
@@ -945,28 +951,28 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
 
     def _set_mac_addresses_gateway(self, interface, mac_address):
-            nos_url = self.snippets.PEM_MASTER + "/device/" + mac_address
+            director_url = self.snippets.PEM_MASTER + "/device/" + mac_address
             body_data = {"device_name": interface,
                          "label": "gateway"}
-            self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+            self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _create_log_rules(self, mac_address, tenant_id):
-        nos_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
+        director_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
         vm_state = True
         body_data = {"domain_dest": tenant_id,
                      "log_ifc_type": "ACCESS_PHYS",
                      "ignore_vm_state": vm_state,
                      "phy_mac_addr": mac_address}
-        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+        self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _create_phys_rules(self, mac_address, interface, tenant_id):
-        nos_url = self.snippets.PEM_MASTER + "/ifc_rule_physical/" + mac_address
+        director_url = self.snippets.PEM_MASTER + "/ifc_rule_physical/" + mac_address
         body_data = {"domain_dest": tenant_id,
                          "ifc_name": interface,
                          "ifc_type": "ACCESS_PHYS",
                          "mac_addr": mac_address,
                          "pem_owned": 1}
-        self.rest_conn.nos_rest_conn(nos_url, 'PUT', body_data)
+        self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
 
     def _network_admin_state(self, network):
