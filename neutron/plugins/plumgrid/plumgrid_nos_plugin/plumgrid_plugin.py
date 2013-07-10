@@ -123,7 +123,6 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                               network_id=net["id"],
                           ))
                 # Set rules for external connectivity
-                print net
                 if net['router:external']:
                     phy_mac_address = self._set_rules(tenant_id)
                     self._create_vnd(tenant_id, True)
@@ -139,7 +138,6 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
                     # Add Rule Port Connector
                     # Add physical classification rule
-
                     conn_rule = "/properties/rule_group/PortConnectorRule"
                     conn_rule = tenant_id + conn_rule
                     director_url = self.snippets.BASE_Director_URL + conn_rule
@@ -151,7 +149,6 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
                 else:
                     # Create VND
-                    print "Getting VND"
                     self._create_vnd(tenant_id, False)
 
                 # Add bridge to VND
@@ -197,14 +194,13 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             try:
                 # PLUMgrid Server does not support updating resources yet
                 director_url = self.snippets.BASE_Director_URL + net_id
-                headers = {}
                 body_data = {}
                 self.rest_conn.director_rest_conn(director_url,
-                                             'DELETE', body_data, headers)
+                                             'DELETE', body_data)
                 director_url = self.snippets.BASE_Director_URL + net["id"]
                 body_data = self.snippets.create_domain_body_data(tenant_id)
                 self.rest_conn.director_rest_conn(director_url,
-                                             'PUT', body_data, headers)
+                                             'PUT', body_data)
             except Exception:
                 err_message = _("PLUMgrid Director communication failed")
                 LOG.Exception(err_message)
@@ -238,7 +234,6 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                     director_url = self.snippets.BASE_Director_URL + conn_rule
                     self.rest_conn.director_rest_conn(director_url,
                                                      'DELETE', body_data)
-
 
                 bridge_name = "bridge_" + net_id[:6]
                 bridge_path = tenant_id + "/ne/" + bridge_name
@@ -299,7 +294,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                                 "Configuring Interface in Router"))
                     # Create interface at Router
                     router_id = q_port["device_id"]
-                    router_db =  self._get_router(context, router_id)
+                    router_db = self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     director_url = self.snippets.create_ne_url(
@@ -307,7 +302,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                     director_url = director_url + "/ifc/GatewayExt"
 
                     # TODO: (emagana) Modify Network Mask
-                    body_data = { "ifc_type": "static",
+                    body_data = {"ifc_type": "static",
                                   "ip_address": interface_ip,
                                   "ip_address_mask": "255.0.0.0"}
                     self.rest_conn.director_rest_conn(director_url,
@@ -322,7 +317,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return self._port_viftype_binding(context, q_port)
 
     def update_port(self, context, port_id, port):
-        """Update port core Quantum API."""
+        """Update port core Neutron API."""
         LOG.debug(_("Neutron PLUMgrid Plugin Status: update_port() called"))
 
         with context.session.begin(subtransactions=True):
@@ -332,11 +327,11 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
             try:
                 if q_port["device_owner"] == "network:router_gateway":
-                    LOG.debug(_("QuantumPluginPLUMgrid Status:"
+                    LOG.debug(_("NeutronPluginPLUMgrid Status:"
                                 "Updating Interface in Router"))
                     # Update interface at Router
                     router_id = q_port["device_id"]
-                    router_db =  self._get_router(context, router_id)
+                    router_db = self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     director_url = self.snippets.create_ne_url(
@@ -344,7 +339,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                     director_url = director_url + "/ifc/GatewayExt"
 
                     # TODO: (Edgar) Need to get the right Mask for this Subnet
-                    body_data = { "ifc_type": "static",
+                    body_data = {"ifc_type": "static",
                                   "ip_address": interface_ip,
                                   "ip_address_mask": "255.0.0.0"}
                     self.rest_conn.director_rest_conn(director_url,
@@ -358,35 +353,38 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return self._port_viftype_binding(context, q_port)
 
     def delete_port(self, context, port_id, l3_port_check=True):
-        """Delete port core Quantum API."""
+        """Delete port core Neutron API."""
 
         LOG.debug(_("Neutron PLUMgrid Plugin Status: delete_port() called"))
 
         with context.session.begin(subtransactions=True):
-            q_port = super(NeutronPluginPLUMgridV2, self).get_port(context, port_id)
+            q_port = super(NeutronPluginPLUMgridV2,
+                           self).get_port(context, port_id)
 
             # Plugin DB - Port Delete
             super(NeutronPluginPLUMgridV2, self).delete_port(context, port_id)
 
             try:
                 if q_port["device_owner"] == "network:router_gateway":
-                    LOG.debug(_("QuantumPluginPLUMgrid Status:"
+                    LOG.debug(_("NeutronPluginPLUMgrid Status:"
                                 "Deleting Interface in Router"))
                     # Delete interface at Router
                     router_id = q_port["device_id"]
-                    router_db =  self._get_router(context, router_id)
+                    router_db = self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     director_url = self.snippets.create_ne_url(
                         tenant_id, router_id, "router")
-                    director_url = director_url + "/ifc/GatewayExt"
+                    director_url += "/ifc/GatewayExt"
                     # TODO: (Edgar) Need to get the right Mask for this Subnet
                     body_data = {}
                     self.rest_conn.director_rest_conn(director_url,
                                                          'DELETE', body_data)
 
                     # Insert Wire Connector
-                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-                    self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, "EXT", "Wire")
+                    self.rest_conn.director_rest_conn(
+                        director_url, 'DELETE', body_data)
 
             except:
                 err_message = _("PLUMgrid Director communication failed")
@@ -403,14 +401,14 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def get_ports(self, context, filters=None, fields=None):
         with context.session.begin(subtransactions=True):
-            q_ports = super(NeutronPluginPLUMgridV2, self).get_ports(context, filters,
-                                                              fields)
+            q_ports = super(NeutronPluginPLUMgridV2, self).get_ports(
+                context, filters, fields)
             for q_port in q_ports:
                 self._port_viftype_binding(context, q_port)
         return [self._fields(port, fields) for port in q_ports]
 
     def create_subnet(self, context, subnet):
-        """Create subnet core Quantum API."""
+        """Create subnet core Neutron API."""
 
         LOG.debug(_("Neutron PLUMgrid Plugin Status: create_subnet() called"))
 
@@ -438,10 +436,12 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                     ip_range_dict = subnet['allocation_pools']
                     ip_range_start = ip_range_dict[0].get('start')
                     ip_range_end = ip_range_dict[0].get('end')
-                    self._update_nat_ip_pool(tenant_id, ip_range_start, ip_range_end)
+                    self._update_nat_ip_pool(tenant_id, ip_range_start,
+                                             ip_range_end)
 
                     # Insert NAT element
-                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    nat_path = tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    director_url = self.snippets.BASE_Director_URL + nat_path
                     nat_name = "GW_NAT_1-" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
                     body_data = self.snippets.create_nat_body_data(
@@ -450,21 +450,24 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                                                  'PUT', body_data)
 
                     #Create interface at Bridge
-                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, net_id, "bridge")
                     director_url = director_url + "/ifc/" + subnet_id[:6]
-                    body_data = { "ifc_type": "static"}
+                    body_data = {"ifc_type": "static"}
                     self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Create link between Bridge - NAT
-                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, nat_name)
-                    body_data = self.snippets.create_gen_link_body_data(bridge_name, nat_name,
-                                                                        subnet_id[:6], "outside")
+                    director_url = self.snippets.create_link_url(
+                        tenant_id, subnet_id, nat_name)
+                    body_data = self.snippets.create_gen_link_body_data(
+                        bridge_name, nat_name, subnet_id[:6], "outside")
                     self.rest_conn.director_rest_conn(director_url,
-                                                 'PUT', body_data)
+                                                      'PUT', body_data)
 
                     # Insert Wire Connector
-                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, "EXT", "Wire")
                     wire_name = "Wire_EXT"
                     body_data = self.snippets.create_wire_body_data(
                         tenant_id, wire_name)
@@ -472,31 +475,35 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                                                  'PUT', body_data)
 
                     # Link between Wire and NAT
-                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, wire_name)
-                    body_data = self.snippets.create_gen_link_body_data(wire_name, nat_name,
-                                                                        "ingress", "inside")
+                    director_url = self.snippets.create_link_url(
+                        tenant_id, subnet_id, wire_name)
+                    body_data = self.snippets.create_gen_link_body_data(
+                        wire_name, nat_name, "ingress", "inside")
                     self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Create interface at Bridge
-                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
-                    director_url = director_url + "/ifc/GatewayConnector"
-                    body_data = { "ifc_type": "static"}
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, net_id, "bridge")
+                    director_url += "/ifc/GatewayConnector"
+                    body_data = {"ifc_type": "static"}
                     self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Link Gateway Connector with External Bridge
-                    director_url = self.snippets.create_link_url(tenant_id, subnet_id, bridge_name)
+                    director_url = self.snippets.create_link_url(
+                        tenant_id, subnet_id, bridge_name)
                     gateway_name = "gateway_" + net_id[:6]
-                    body_data = self.snippets.create_gen_link_body_data(bridge_name, gateway_name,
-                                                                        "GatewayConnector", "ExtPort")
+                    body_data = self.snippets.create_gen_link_body_data(
+                        bridge_name, gateway_name, "GatewayConnector",
+                        "ExtPort")
                     self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
-
                 if subnet['enable_dhcp'] == True:
                     # Add DHCP to VND
-                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, net_id, "dhcp")
                     dhcp_name = "dhcp_" + net_id[:6]
                     bridge_name = "bridge_" + net_id[:6]
                     dhcp_server_ip = "1.0.0.1"
@@ -513,14 +520,16 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                                                  'PUT', body_data)
 
                     # Create link between bridge - dhcp
-                    director_url = self.snippets.create_link_url(tenant_id, net_id)
+                    director_url = self.snippets.create_link_url(
+                        tenant_id, net_id)
                     body_data = self.snippets.create_link_body_data(
                         bridge_name, dhcp_name)
                     self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
                     # Add dhcp with values to VND
-                    director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, net_id, "dhcp")
                     dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
                     mask = subnet['cidr'].split("/")
                     dhcp_server_mask = self._get_mask_from_subnet(mask[1])
@@ -552,7 +561,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return subnet
 
     def delete_subnet(self, context, subnet_id):
-        """Delete subnet core Quantum API."""
+        """Delete subnet core Neutron API."""
 
         LOG.debug(_("Neutron PLUMgrid Plugin Status: delete_subnet() called"))
         #Collecting subnet info
@@ -569,19 +578,22 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             try:
                 if net_extended['router:external']:
                     # Insert NAT element
-                    director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    nat_path = tenant_id + "/ne/GW_NAT_1-" + net_id[:6]
+                    director_url = self.snippets.BASE_Director_URL + nat_path
                     body_data = {}
                     self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
 
                     # Delete Wire Connector
-                    director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                    director_url = self.snippets.create_ne_url(
+                        tenant_id, "EXT", "Wire")
                     self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
 
                 dhcp_name = "dhcp_" + net_id[:6]
                 body_data = {}
-                director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/" + dhcp_name
+                dhcp_path = tenant_id + "/ne/" + dhcp_name
+                director_url = self.snippets.BASE_Director_URL + dhcp_path
                 self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
@@ -593,7 +605,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return del_subnet
 
     def update_subnet(self, context, subnet_id, subnet):
-        """Update subnet core Quantum API."""
+        """Update subnet core Neutron API."""
 
         LOG.debug(_("update_subnet() called"))
         #Collecting subnet info
@@ -609,7 +621,8 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             try:
                 # PLUMgrid Server does not support updating resources yet
                 dhcp_name = "dhcp_" + net_id[:6]
-                director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, net_id, "dhcp")
                 dhcp_server_ip = self._get_dhcp_ip(new_subnet['cidr'])
                 mask = new_subnet['cidr'].split("/")
                 dhcp_server_mask = self._get_mask_from_subnet(mask[1])
@@ -637,23 +650,24 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def create_router(self, context, router):
         """
-        Create router extension Quantum API
+        Create router extension Neutron API
         """
-        LOG.debug(_("QuantumPluginPLUMgrid Status: create_router() called"))
+        LOG.debug(_("NeutronPluginPLUMgrid Status: create_router() called"))
 
         tenant_id = self._get_tenant_id_for_create(context, router["router"])
 
         with context.session.begin(subtransactions=True):
 
             # create router in DB
-            router = super(NeutronPluginPLUMgridV2, self).create_router(context,
-                                                                       router)
+            router = super(NeutronPluginPLUMgridV2,
+                           self).create_router(context, router)
             router_id = router["id"]
             self._create_vnd(tenant_id)
             # create router on the network controller
             try:
                 # Add Router to VND
-                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, router_id, "router")
                 router_name = "router_" + router_id[:6]
                 body_data = self.snippets.create_router_body_data(
                     tenant_id, router_name)
@@ -670,7 +684,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def update_router(self, context, router_id, router):
 
-        LOG.debug(_("QuantumPluginPLUMgrid: update_router() called"))
+        LOG.debug(_("NeutronPluginPLUMgrid: update_router() called"))
 
         with context.session.begin(subtransactions=True):
             new_router = super(NeutronPluginPLUMgridV2,
@@ -681,17 +695,20 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                 net_id = new_router["external_gateway_info"]["network_id"]
 
                 # Insert Wire Connector
-                director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, "EXT", "Wire")
                 wire_name = "Wire_EXT"
-                body_data = self.snippets.create_wire_body_data(tenant_id, wire_name)
-                self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
-
+                body_data = self.snippets.create_wire_body_data(
+                    tenant_id, wire_name)
+                self.rest_conn.director_rest_conn(
+                    director_url, 'PUT', body_data)
 
                 # Link between Wire and Router
                 router_name = "router_" + router_id[:6]
-                director_url = self.snippets.create_link_url(tenant_id, net_id, wire_name)
-                body_data = self.snippets.create_gen_link_body_data(wire_name, router_name,
-                                                                        "ingress", "GatewayExt")
+                director_url = self.snippets.create_link_url(
+                    tenant_id, net_id, wire_name)
+                body_data = self.snippets.create_gen_link_body_data(
+                    wire_name, router_name, "ingress", "GatewayExt")
                 self.rest_conn.director_rest_conn(director_url,
                                                  'PUT', body_data)
 
@@ -699,17 +716,19 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return new_router
 
     def delete_router(self, context, router_id):
-        LOG.debug(_("QuantumPluginPLUMgrid: delete_router() called"))
+        LOG.debug(_("NeutronPluginPLUMgrid: delete_router() called"))
 
         with context.session.begin(subtransactions=True):
             orig_router = self._get_router(context, router_id)
             tenant_id = orig_router["tenant_id"]
 
-            super(NeutronPluginPLUMgridV2, self).delete_router(context, router_id)
+            super(NeutronPluginPLUMgridV2,
+                  self).delete_router(context, router_id)
 
         try:
             router_name = "router_" + router_id[:6]
-            director_url = self.snippets.BASE_Director_URL + tenant_id + "/ne/" + router_name
+            director_path = tenant_id + "/ne/" + router_name
+            director_url = self.snippets.BASE_Director_URL + director_path
             body_data = {}
             self.rest_conn.director_rest_conn(director_url,
                                          'DELETE', body_data)
@@ -721,7 +740,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def add_router_interface(self, context, router_id, interface_info):
 
-        LOG.debug(_("QuantumPluginPLUMgrid: add_router_interface() called"))
+        LOG.debug(_("NeutronPluginPLUMgrid: add_router_interface() called"))
         with context.session.begin(subtransactions=True):
 
             # Validate args
@@ -731,12 +750,10 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             # create interface in DB
             int_router = super(NeutronPluginPLUMgridV2,
                                        self).add_router_interface(context,
-                                                                  router_id,
-                                                                  interface_info)
+                                           router_id, interface_info)
             port = self._get_port(context, int_router['port_id'])
             net_id = port['network_id']
             interface_ip = port['fixed_ips'][0]['ip_address']
-
 
             # create interface on the network controller
             try:
@@ -744,22 +761,25 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                 router_name = "router_" + router_id[:6]
 
                 # Create interface at router
-                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, router_id, "router")
                 director_url = director_url + "/ifc/" + net_id[:6]
-                body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                              "ip_address_mask": "255.0.0.0"}
+                body_data = {"ifc_type": "static", "ip_address": interface_ip,
+                             "ip_address_mask": "255.0.0.0"}
                 self.rest_conn.director_rest_conn(director_url,
-                                             'PUT', body_data)
+                                                  'PUT', body_data)
 
                 #Create interface at Bridge
-                director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, net_id, "bridge")
                 director_url = director_url + "/ifc/" + router_id[:6]
-                body_data = { "ifc_type": "static"}
+                body_data = {"ifc_type": "static"}
                 self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
                 # Create link between bridge - router
-                director_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+                director_url = self.snippets.create_link_url(
+                    tenant_id, net_id, router_id)
                 body_data = self.snippets.create_link_body_data(
                     bridge_name, router_name, router_id, net_id)
                 self.rest_conn.director_rest_conn(director_url,
@@ -774,7 +794,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def remove_router_interface(self, context, router_id, interface_info):
 
-        LOG.debug(_("QuantumPluginPLUMgrid: remove_router_interface() called"))
+        LOG.debug(_("PLUMgrid Director: remove_router_interface() called"))
         with context.session.begin(subtransactions=True):
 
             router = self._get_router(context, router_id)
@@ -796,25 +816,30 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             try:
                 # Delete Link
                 body_data = {}
-                director_url = self.snippets.create_link_url(tenant_id, net_id, router_id)
+                director_url = self.snippets.create_link_url(
+                    tenant_id, net_id, router_id)
                 self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
                 # Delete Interface Bridge
-                director_url = self.snippets.create_ne_url(tenant_id, net_id, "bridge")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, net_id, "bridge")
                 director_url = director_url + "/ifc/" + router_id[:6]
                 self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
                 # Delete Interface Router
-                director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, router_id, "router")
                 director_url = director_url + "/ifc/" + net_id[:6]
                 self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
                 # Insert Wire Connector
-                director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-                self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
+                director_url = self.snippets.create_ne_url(
+                    tenant_id, "EXT", "Wire")
+                self.rest_conn.director_rest_conn(
+                    director_url, 'DELETE', body_data)
 
             except:
                 err_message = _("PLUMgrid Director communication failed: ")
@@ -830,11 +855,12 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
     def _get_plugin_version(self):
         return VERSION
 
-    def _cleaning_director_subnet_structure(self, body_data, headers, net_id):
+    def _cleaning_director_subnet_structure(self, body_data, net_id):
         domain_structure = ['/properties', '/link', '/ne']
         for structure in domain_structure:
             director_url = self.snippets.BASE_Director_URL + net_id + structure
-            self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data, headers)
+            self.rest_conn.director_rest_conn(
+                director_url, 'DELETE', body_data)
 
     def _network_admin_state(self, network):
         try:
@@ -851,31 +877,29 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         return network
 
     def _update_nat_ip_pool(self, tenant_id, nat_ip_start, nat_ip_end):
-        director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
-        #self.rest_conn.director_rest_conn(director_url, 'DELETE', {})
-        body_data = self.snippets.update_tenant_domain_body_data(nat_ip_start, nat_ip_end)
+        nat_path = tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
+        director_url = self.snippets.TENANT_Director_URL + nat_path
+        body_data = self.snippets.update_tenant_domain_body_data(
+            nat_ip_start, nat_ip_end)
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _set_rules(self, tenant_id):
         # Set up Gateway Node(s)
         # Create Logical and Physical Rules for Gateway
-        LOG.debug(_('QuantumPluginPLUMgrid Creating PLUMgrid External '
+        LOG.debug(_('NeutronPluginPLUMgrid Creating PLUMgrid External '
                     'Routing Rules'))
-        #self._get_list_engine_nodes()
-        #self._get_list_gateway_nodes(self._get_list_engine_nodes())
-        phy_mac_address = self._set_phys_interfaces(self._get_list_gateway_nodes(self._get_list_engine_nodes()), tenant_id)
+        phy_mac_address = self._set_phys_interfaces(
+            self._get_list_gateway_nodes(
+                self._get_list_engine_nodes()), tenant_id)
         return phy_mac_address
 
     def _create_vnd(self, tenant_id, port_connector=False):
         # Verify VND (Tenant_ID) does not exist in Director
         director_url = self.snippets.BASE_Director_URL + tenant_id
         body_data = {}
-        print "REST CALL"
-        print director_url
         resp = self.rest_conn.director_rest_conn(director_url,
                                             'GET', body_data)
         resp_dict = json.loads(resp[2])
-        print resp_dict
         if not tenant_id in resp_dict.values():
             LOG.debug(_('Creating VND for Tenant: %s'), tenant_id)
             director_url = self.snippets.TENANT_Director_URL + tenant_id
@@ -885,14 +909,14 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                                          'PUT', body_data)
 
             if port_connector:
-                director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id
+                port_path = tenant_id + "/containers/" + tenant_id
+                director_url = self.snippets.TENANT_Director_URL + port_path
                 body_data = {"services_enabled": {
                     "DHCP": {"service_type": "DHCP"},
                     "GW_NAT_1": {"service_type": "NAT"},
                     "Gateway": {"service_type": "gateway"}}}
                 self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
-
 
             director_url = self.snippets.BASE_Director_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
@@ -959,12 +983,10 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             if pems_dict[interface]['ifc_type'] == 'access_phys':
                 mac_address_full = pems_dict[interface]['status']
                 mac_address = mac_address_full.split()[1][:17]
-                #mac_addresses.append(dict_physical)
                 self._set_mac_addresses_gateway(interface, mac_address)
                 self._create_log_rules(mac_address, tenant_id)
                 self._create_phys_rules(mac_address, interface, tenant_id)
         return mac_address
-
 
     def _set_mac_addresses_gateway(self, interface, mac_address):
             director_url = self.snippets.PEM_MASTER + "/device/" + mac_address
@@ -973,7 +995,8 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
             self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _create_log_rules(self, mac_address, tenant_id):
-        director_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
+        rule_path = "/ifc_rule_logical/" + mac_address
+        director_url = self.snippets.PEM_MASTER + rule_path
         vm_state = True
         body_data = {"domain_dest": tenant_id,
                      "log_ifc_type": "ACCESS_PHYS",
@@ -982,7 +1005,8 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
     def _create_phys_rules(self, mac_address, interface, tenant_id):
-        director_url = self.snippets.PEM_MASTER + "/ifc_rule_physical/" + mac_address
+        mac_path = "/ifc_rule_physical/" + mac_address
+        director_url = self.snippets.PEM_MASTER + mac_path
         body_data = {"domain_dest": tenant_id,
                          "ifc_name": interface,
                          "ifc_type": "ACCESS_PHYS",
@@ -990,7 +1014,7 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
                          "pem_owned": 1}
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
-    def _get_dhcp_ip (self, cidr):
+    def _get_dhcp_ip(self, cidr):
         dhcp_ip = re.split('(.*)\.(.*)\.(.*)\.(.*)/(.*)', cidr)
         dhcp_ip[4] = "1"
         dhcp_ip = dhcp_ip[1:-2]
@@ -999,6 +1023,9 @@ class NeutronPluginPLUMgridV2(db_base_plugin_v2.NeutronDbPluginV2,
     def _get_mask_from_subnet(self, mask):
         bits = 0
         mask_int = int(mask)
-        for i in xrange(32-mask_int,32):
+        for i in xrange(32 - mask_int, 32):
             bits |= (1 << i)
-        return "%d.%d.%d.%d" % ((bits & 0xff000000) >> 24, (bits & 0xff0000) >> 16, (bits & 0xff00) >> 8 , (bits & 0xff))
+        return "%d.%d.%d.%d" % ((bits & 0xff000000)
+                                >> 24, (bits & 0xff0000)
+                                       >> 16, (bits & 0xff00)
+                                              >> 8, (bits & 0xff))

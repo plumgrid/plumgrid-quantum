@@ -99,7 +99,6 @@ class DataDirectorPLUMgrid():
                      "ip_end": nat_pool_ip_end}
         return body_data
 
-
     def create_ne_url(self, tenant_id, net_id, ne):
         ne_path = "/ne/" + ne + "_" + net_id[:6]
         return self.BASE_Director_URL + tenant_id + ne_path
@@ -171,13 +170,13 @@ class DataDirectorPLUMgrid():
                      "mobility": "true",
                      "ne_dname": "nat",
                      "ne_name": nat_name,
-                     "ifc": {"inside": {"ifc_type":"static",
-                                        "zone":"inside"},
-                             "outside": {"ifc_type":"static",
-                                         "zone":"outside"}},
+                     "ifc": {"inside": {"ifc_type": "static",
+                                        "zone": "inside"},
+                             "outside": {"ifc_type": "static",
+                                         "zone": "outside"}},
                      "outbound_cfg":
-                         {"outbound_cfg":{"allow_all": self.TRUE_FLAG,
-                                          "allow_icmp":self.TRUE_FLAG}}}
+                         {"outbound_cfg": {"allow_all": self.TRUE_FLAG,
+                                          "allow_icmp": self.TRUE_FLAG}}}
         return body_data
 
     def create_wire_body_data(self, tenant_id, wire_name):
@@ -185,11 +184,11 @@ class DataDirectorPLUMgrid():
                      "mobility": "true",
                      "ne_group": "connector",
                      "ne_name": wire_name,
-                     "ifc": {"ingress": {"ifc_type":"static",
+                     "ifc": {"ingress": {"ifc_type": "static",
                                         "if_context": "IN"}},
                      "action":
                          {"action1":
-                              {"action_text":"create_and_link_ifc(DYN_)"}}}
+                              {"action_text": "create_and_link_ifc(DYN_)"}}}
         return body_data
 
     def create_gateway_body_data(self, tenant_id, gateway_name):
@@ -197,7 +196,7 @@ class DataDirectorPLUMgrid():
                      "mobility": "true",
                      "ne_group": "connector",
                      "ne_name": gateway_name,
-                     "ifc": {"ExtPort": {"ifc_type":"static"}},
+                     "ifc": {"ExtPort": {"ifc_type": "static"}},
                      "action":
                          {"action1":
                                 {"action_text": "create_and_link_ifc(DYN_)"}}}

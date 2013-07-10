@@ -49,7 +49,7 @@ class RestConnection(object):
         headers['Content-type'] = 'application/json'
         headers['Accept'] = 'application/json'
 
-        LOG.debug(_("PLUMgrid_Director_Server: %(server)s %(port)s %(action)s"),
+        LOG.debug(_("PLUMgrid_Director: %(server)s %(port)s %(action)s"),
                   dict(server=self.server, port=self.port, action=action))
 
         conn = httplib.HTTPConnection(self.server, self.port,
@@ -60,7 +60,7 @@ class RestConnection(object):
             return
 
         try:
-            LOG.debug(_("PLUMgrid_Director_Server Sending Data: %(director_url)s "
+            LOG.debug(_("PLUMgrid_Director Sending Data: %(director_url)s "
                         "%(body_data)s %(headers)s"),
                       dict(
                           director_url=director_url,
@@ -71,7 +71,7 @@ class RestConnection(object):
             resp = conn.getresponse()
             resp_str = resp.read()
 
-            LOG.debug(_("PLUMgrid_Director_Server Connection Data: %(resp)s, "
+            LOG.debug(_("PLUMgrid_Director Connection Data: %(resp)s, "
                         "%(resp_str)s"), dict(resp=resp, resp_str=resp_str))
 
             if resp.status is httplib.OK:
@@ -84,10 +84,10 @@ class RestConnection(object):
 
             ret = (resp.status, resp.reason, resp_str)
         except urllib2.HTTPError:
-            LOG.error(_('PLUMgrid_Director_Server: %(action)s failure, %(e)r'))
+            LOG.error(_('PLUMgrid_Director: %(action)s failure, %(e)r'))
             ret = 0, None, None, None
         conn.close()
-        LOG.debug(_("PLUMgrid_Director_Server: status=%(status)d, "
+        LOG.debug(_("PLUMgrid_Director: status=%(status)d, "
                   "reason=%(reason)r, ret=%(ret)s"),
                   {'status': ret[0], 'reason': ret[1], 'ret': ret[2]})
         return ret
