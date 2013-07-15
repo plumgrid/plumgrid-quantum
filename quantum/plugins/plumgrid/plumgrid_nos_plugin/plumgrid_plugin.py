@@ -503,7 +503,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     # Add dhcp with values to VND
                     director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                     ipnet = netaddr.IPNetwork(subnet['cidr'])
-                    dhcp_server_ip = ipnet.ip
+                    dhcp_server_ip = str(ipnet.ip)
                     dhcp_server_mask = str(ipnet.netmask)
 
                     ip_range_dict = subnet['allocation_pools']
@@ -602,7 +602,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 dhcp_name = "dhcp_" + net_id[:6]
                 director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
                 ipnet = netaddr.IPNetwork(subnet['cidr'])
-                dhcp_server_ip = ipnet.ip
+                dhcp_server_ip = str(ipnet.ip)
                 dhcp_server_mask = str(ipnet.netmask)
                 ip_range_dict = new_subnet['allocation_pools']
                 ip_range_start = ip_range_dict[0].get('start')
