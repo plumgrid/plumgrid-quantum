@@ -24,6 +24,7 @@ PLUMgrid Director.
 
 from oslo.config import cfg
 import json
+import netaddr
 import re
 
 from quantum.common import exceptions as q_exc
@@ -283,10 +284,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                     director_url = director_url + "/ifc/GatewayExt"
-
-                    # TODO: (Edgar) Generate Network Mask
+                    subnet_id = q_port["fixed_ips"][0]["subnet_id"]
+                    subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
+                    ipnet = netaddr.IPNetwork(subnet['cidr'])
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                                          "ip_address_mask": "255.0.0.0"}
+                                          "ip_address_mask": str(ipnet.netmask)}
                     self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 
@@ -335,9 +337,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                     director_url = director_url + "/ifc/GatewayExt"
-                    # TODO: (Edgar) Need to get the right Mask for this Subnet
+                    subnet_id = q_port["fixed_ips"][0]["subnet_id"]
+                    subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
+                    ipnet = netaddr.IPNetwork(subnet['cidr'])
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                                          "ip_address_mask": "255.0.0.0"}
+                                          "ip_address_mask": str(ipnet.netmask)}
                     self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 
@@ -498,9 +502,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                     # Add dhcp with values to VND
                     director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                    dhcp_server_ip = self._get_dhcp_ip(subnet['cidr'])
-                    mask = subnet['cidr'].split("/")
-                    dhcp_server_mask = self._get_mask_from_subnet(mask[1])
+                    ipnet = netaddr.IPNetwork(subnet['cidr'])
+                    dhcp_server_ip = ipnet.ip
+                    dhcp_server_mask = str(ipnet.netmask)
 
                     ip_range_dict = subnet['allocation_pools']
                     ip_range_start = ip_range_dict[0].get('start')
@@ -597,9 +601,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # PLUMgrid Server does not support updating resources yet
                 dhcp_name = "dhcp_" + net_id[:6]
                 director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                dhcp_server_ip = self._get_dhcp_ip(new_subnet['cidr'])
-                mask = new_subnet['cidr'].split("/")
-                dhcp_server_mask = self._get_mask_from_subnet(mask[1])
+                ipnet = netaddr.IPNetwork(subnet['cidr'])
+                dhcp_server_ip = ipnet.ip
+                dhcp_server_mask = str(ipnet.netmask)
                 ip_range_dict = new_subnet['allocation_pools']
                 ip_range_start = ip_range_dict[0].get('start')
                 ip_range_end = ip_range_dict[0].get('end')
@@ -734,12 +738,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 bridge_name = "bridge_" + net_id[:6]
                 router_name = "router_" + router_id[:6]
+                subnet_id = port["fixed_ips"][0]["subnet_id"]
+                subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
+                ipnet = netaddr.IPNetwork(subnet['cidr'])
 
                 # Create interface at router
                 director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                 director_url = director_url + "/ifc/" + net_id[:6]
                 body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                              "ip_address_mask": "255.0.0.0"}
+                              "ip_address_mask": str(ipnet.netmask)}
                 self.rest_conn.director_rest_conn(director_url,
                                              'PUT', body_data)
 
@@ -814,11 +821,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 raise plum_excep.PLUMgridException(err_message)
 
         return del_int_router
-    
-    """
-    Extension API implementation
-    """
-    # TODO: (Edgar) Complete extensions for PLUMgrid
 
     """
     Internal PLUMgrid fuctions
@@ -988,16 +990,3 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             LOG.Exception(err_message)
             raise plum_excep.PLUMgridException(err_message)
         return network
-
-    def _get_dhcp_ip (self, cidr):
-        dhcp_ip = re.split('(.*)\.(.*)\.(.*)\.(.*)/(.*)', cidr)
-        dhcp_ip[4] = "1"
-        dhcp_ip = dhcp_ip[1:-2]
-        return '.'.join(dhcp_ip)
-
-    def _get_mask_from_subnet(self, mask):
-        bits = 0
-        mask_int = int(mask)
-        for i in xrange(32-mask_int,32):
-            bits |= (1 << i)
-        return "%d.%d.%d.%d" % ((bits & 0xff000000) >> 24, (bits & 0xff0000) >> 16, (bits & 0xff00) >> 8 , (bits & 0xff))

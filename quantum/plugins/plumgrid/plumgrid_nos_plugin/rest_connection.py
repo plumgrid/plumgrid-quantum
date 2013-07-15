@@ -48,7 +48,6 @@ class RestConnection(object):
         headers = {}
         headers['Content-type'] = 'application/json'
         headers['Accept'] = 'application/json'
-
         LOG.debug(_("PLUMgrid_Director: %s %s %s"), self.server, self.port,
                   action)
 
