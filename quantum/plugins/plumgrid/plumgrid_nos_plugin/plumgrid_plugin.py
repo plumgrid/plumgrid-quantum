@@ -286,9 +286,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     director_url = director_url + "/ifc/GatewayExt"
                     subnet_id = q_port["fixed_ips"][0]["subnet_id"]
                     subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
-                    ipnet = netaddr.IPNetwork(subnet['cidr'])
+                    netmask = self.snippets.EXTERNALGW
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                                          "ip_address_mask": str(ipnet.netmask)}
+                                          "ip_address_mask": netmask}
                     self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 
@@ -339,9 +339,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     director_url = director_url + "/ifc/GatewayExt"
                     subnet_id = q_port["fixed_ips"][0]["subnet_id"]
                     subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
-                    ipnet = netaddr.IPNetwork(subnet['cidr'])
+                    netmask = self.snippets.EXTERNALGW
                     body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                                          "ip_address_mask": str(ipnet.netmask)}
+                                          "ip_address_mask": netmask}
                     self.rest_conn.director_rest_conn(director_url,
                                                          'PUT', body_data)
 

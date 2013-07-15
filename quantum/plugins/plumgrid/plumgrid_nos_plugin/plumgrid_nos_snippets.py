@@ -37,6 +37,7 @@ class DataDirectorPLUMgrid():
     CDB_BASE_URL = '/0/cdb/folder/'
     PEM_MASTER = '/0/pem_master'
     TRUE_FLAG = True
+    EXTERNALGW = '255.0.0.0'
 
     def __init__(self):
         LOG.info(_('QuantumPluginPLUMgrid Status:'
