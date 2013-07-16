@@ -25,8 +25,8 @@ PLUMgrid Director.
 from oslo.config import cfg
 import json
 import netaddr
-import re
 
+from quantum.api.v2 import attributes
 from quantum.common import exceptions as q_exc
 from quantum.db import api as db
 from quantum.db import db_base_plugin_v2
@@ -393,21 +393,28 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         """
         Create subnet core Quantum API
         """
-
         LOG.debug(_("QuantumPluginPLUMgrid Status: create_subnet() called"))
+
         with context.session.begin(subtransactions=True):
             # Plugin DB - Subnet Create
             net = super(QuantumPluginPLUMgridV2, self).get_network(
                 context, subnet['subnet']['network_id'], fields=None)
+            s = subnet['subnet']
+            ipnet = netaddr.IPNetwork(s['cidr'])
+
+            if s['gateway_ip'] is attributes.ATTR_NOT_SPECIFIED:
+                gw_ip = str(netaddr.IPAddress(ipnet.last - 1))
+                subnet['subnet']['gateway_ip'] = gw_ip
+
+            if s['allocation_pools'] == attributes.ATTR_NOT_SPECIFIED:
+                allocation_pool = self._allocate_pools_for_subnet(context, s)
+                subnet['subnet']['allocation_pools'] = allocation_pool
 
             subnet = super(QuantumPluginPLUMgridV2, self).create_subnet(
                 context, subnet)
-
-            subnet_details = self._get_subnet(context, subnet["id"])
-            net_id = subnet_details["network_id"]
-            tenant_id = subnet_details["tenant_id"]
+            net_id = subnet["network_id"]
+            tenant_id = subnet["tenant_id"]
             subnet_id = subnet["id"]
-
             self._extend_network_dict_l3(context, net)
 
             try:
@@ -502,10 +509,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                     # Add dhcp with values to VND
                     director_url = self.snippets.create_ne_url(tenant_id, net_id, "dhcp")
-                    ipnet = netaddr.IPNetwork(subnet['cidr'])
-                    dhcp_server_ip = str(ipnet.ip)
+                    dhcp_server_ip = str(netaddr.IPAddress(ipnet.first + 1))
                     dhcp_server_mask = str(ipnet.netmask)
-
                     ip_range_dict = subnet['allocation_pools']
                     ip_range_start = ip_range_dict[0].get('start')
                     ip_range_end = ip_range_dict[0].get('end')
@@ -975,6 +980,34 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                          "mac_addr": mac_address,
                          "pem_owned": 1}
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
+
+    def _allocate_pools_for_subnet(self, context, subnet):
+        """Create IP allocation pools for a given subnet
+
+        Pools are defined by the 'allocation_pools' attribute,
+        a list of dict objects with 'start' and 'end' keys for
+        defining the pool range.
+
+        """
+
+        pools = []
+        # Auto allocate the pool around gateway_ip
+        net = netaddr.IPNetwork(subnet['cidr'])
+        first_ip = net.first + 2
+        last_ip = net.last - 1
+        gw_ip = int(netaddr.IPAddress(subnet['gateway_ip'] or net.last))
+        # Use the gw_ip to find a point for splitting allocation pools
+        # for this subnet
+        split_ip = min(max(gw_ip, net.first), net.last)
+        if split_ip > first_ip:
+            pools.append({'start': str(netaddr.IPAddress(first_ip)),
+                          'end': str(netaddr.IPAddress(split_ip - 1))})
+        if split_ip < last_ip:
+            pools.append({'start': str(netaddr.IPAddress(split_ip + 1)),
+                          'end': str(netaddr.IPAddress(last_ip))})
+        # return auto-generated pools
+        # no need to check for their validity
+        return pools
 
 
     def _network_admin_state(self, network):
