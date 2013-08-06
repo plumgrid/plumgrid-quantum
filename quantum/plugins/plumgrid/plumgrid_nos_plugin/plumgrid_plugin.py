@@ -125,7 +125,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
                 # Set rules for external connectivity
                 if net['router:external']:
-                    phy_mac_address = self._set_rules(tenant_id)
+                    phy_mac_address = self._set_rules(tenant_id, 'create')
                     self._create_vnd(tenant_id, True)
 
                     # Insert Gateway Connector
@@ -203,7 +203,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         """
         LOG.debug(_("QuantumPluginPLUMgrid Status: delete_network() called"))
         net = super(QuantumPluginPLUMgridV2, self).get_network(context, net_id)
-        net_extended = self._extend_network_dict_l3(context, net)
+        self._extend_network_dict_l3(context, net)
         tenant_id = net["tenant_id"]
 
 
@@ -222,6 +222,8 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     director_url = self.snippets.BASE_Director_URL + tenant_id + "/properties/rule_group/PortConnectorRule"
                     self.rest_conn.director_rest_conn(director_url,
                                                      'DELETE', body_data)
+
+                    self._set_rules(tenant_id, 'delete')
 
 
                 bridge_name = "bridge_" + net_id[:6]
@@ -277,20 +279,18 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 if q_port["device_owner"] == "network:router_gateway":
                     LOG.debug(_("QuantumPluginPLUMgrid Status: Configuring Interface in Router"))
-                    # Create interface at Router
+                    # Create gateway interface at Router
                     router_id = q_port["device_id"]
-                    router_db =  self._get_router(context, router_id)
+                    router_db = self._get_router(context, router_id)
                     tenant_id = router_db["tenant_id"]
                     interface_ip = q_port["fixed_ips"][0]["ip_address"]
                     director_url = self.snippets.create_ne_url(tenant_id, router_id, "router")
                     director_url = director_url + "/ifc/GatewayExt"
-                    subnet_id = q_port["fixed_ips"][0]["subnet_id"]
-                    subnet = super(QuantumPluginPLUMgridV2, self)._get_subnet(context, subnet_id)
                     netmask = self.snippets.EXTERNALGW
-                    body_data = { "ifc_type": "static", "ip_address": interface_ip,
-                                          "ip_address_mask": netmask}
+                    body_data = {"ifc_type": "static", "ip_address": interface_ip,
+                                 "ip_address_mask": netmask}
                     self.rest_conn.director_rest_conn(director_url,
-                                                         'PUT', body_data)
+                                                      'PUT', body_data)
 
             except:
                 err_message = _("PLUMgrid Director communication failed")
@@ -379,7 +379,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     self.rest_conn.director_rest_conn(director_url,
                                                          'DELETE', body_data)
 
-                    # Insert Wire Connector
+                    # Delete Wire Connector
                     director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
                     self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
 
@@ -554,9 +554,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             net_id = subnet_details["network_id"]
             net_extended = self.get_network(context, net_id)
 
-
-
-
             try:
 
                 if net_extended['router:external']:
@@ -566,7 +563,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                     body_data = {}
                     self.rest_conn.director_rest_conn(director_url,
                                                  'DELETE', body_data)
-
 
                     # Delete Wire Connector
                     director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
@@ -816,10 +812,6 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.director_rest_conn(director_url,
                                              'DELETE', body_data)
 
-                # Insert Wire Connector
-                director_url = self.snippets.create_ne_url(tenant_id, "EXT", "Wire")
-                self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
-
             except:
                 err_message = _("PLUMgrid Director communication failed: ")
                 LOG.Exception(err_message)
@@ -836,18 +828,17 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
     def _update_nat_ip_pool(self, tenant_id, nat_ip_start, nat_ip_end):
         director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id + "/ip_pools/0"
-        #self.rest_conn.director_rest_conn(director_url, 'DELETE', {})
         body_data = self.snippets.update_tenant_domain_body_data(nat_ip_start, nat_ip_end)
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
 
-    def _set_rules(self, tenant_id):
+    def _set_rules(self, tenant_id, rules_operator):
         # Set up Gateway Node(s)
         # Create Logical and Physical Rules for Gateway
         LOG.debug(_('QuantumPluginPLUMgrid Creating PLUMgrid External '
                     'Routing Rules'))
-        #self._get_list_engine_nodes()
-        #self._get_list_gateway_nodes(self._get_list_engine_nodes())
-        phy_mac_address = self._set_phys_interfaces(self._get_list_gateway_nodes(self._get_list_engine_nodes()), tenant_id)
+        phy_mac_address = self._set_phys_interfaces(
+            self._get_list_gateway_nodes(
+                self._get_list_engine_nodes()), tenant_id, rules_operator)
         return phy_mac_address
 
 
@@ -867,6 +858,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                                          'PUT', body_data)
 
             if port_connector:
+                # Create VD in Tenant Manager
                 director_url = self.snippets.TENANT_Director_URL + tenant_id + "/containers/" + tenant_id
                 body_data = {"services_enabled": {
                     "DHCP": {"service_type": "DHCP"},
@@ -875,7 +867,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self.rest_conn.director_rest_conn(director_url,
                                          'PUT', body_data)
 
-
+            # Create VD in Connectivity Manager
             director_url = self.snippets.BASE_Director_URL + tenant_id
             body_data = self.snippets.create_domain_body_data(tenant_id)
             self.rest_conn.director_rest_conn(director_url,
@@ -938,7 +930,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         return list_gateways
 
 
-    def _set_phys_interfaces(self, list_gateways, tenant_id):
+    def _set_phys_interfaces(self, list_gateways, tenant_id, operator='create'):
         for gateway in list_gateways:
             director_url = self.snippets.BASE + gateway + "/ifc"
             body_data = {}
@@ -950,10 +942,15 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             if pems_dict[interface]['ifc_type'] == 'access_phys':
                 mac_address_full = pems_dict[interface]['status']
                 mac_address = mac_address_full.split()[1][:17]
-                #mac_addresses.append(dict_physical)
-                self._set_mac_addresses_gateway(interface, mac_address)
-                self._create_log_rules(mac_address, tenant_id)
-                self._create_phys_rules(mac_address, interface, tenant_id)
+
+                if operator is 'delete':
+                    self._del_mac_addresses_gateway(interface, mac_address)
+                    self._delete_log_rules(mac_address, tenant_id)
+                    self._delete_phys_rules(mac_address, interface, tenant_id)
+                elif operator is 'create':
+                    self._set_mac_addresses_gateway(interface, mac_address)
+                    self._create_log_rules(mac_address, tenant_id)
+                    self._create_phys_rules(mac_address, interface, tenant_id)
         return mac_address
 
 
@@ -962,6 +959,11 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             body_data = {"device_name": interface,
                          "label": "gateway"}
             self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
+
+    def _del_mac_addresses_gateway(self, interface, mac_address):
+            director_url = self.snippets.PEM_MASTER + "/device/" + mac_address
+            body_data = {}
+            self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
 
     def _create_log_rules(self, mac_address, tenant_id):
         director_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
@@ -980,6 +982,16 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                          "mac_addr": mac_address,
                          "pem_owned": 1}
         self.rest_conn.director_rest_conn(director_url, 'PUT', body_data)
+
+    def _delete_log_rules(self, mac_address, tenant_id):
+        director_url = self.snippets.PEM_MASTER + "/ifc_rule_logical/" + mac_address
+        body_data = {}
+        self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
+
+    def _delete_phys_rules(self, mac_address, interface, tenant_id):
+        director_url = self.snippets.PEM_MASTER + "/ifc_rule_physical/" + mac_address
+        body_data = {}
+        self.rest_conn.director_rest_conn(director_url, 'DELETE', body_data)
 
     def _allocate_pools_for_subnet(self, context, subnet):
         """Create IP allocation pools for a given subnet

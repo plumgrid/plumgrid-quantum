@@ -50,7 +50,7 @@ class DataDirectorPLUMgrid():
         return self.CDB_BASE_URL + tenant_id + "/domain/quantum-based"
 
     def create_rule_url(self, tenant_id):
-        return self.RULE_Director_URL + tenant_id + "_" + tenant_id[:6]
+        return self.RULE_Director_URL + tenant_id + "__" + tenant_id[:6]
 
     def create_rule_cm_url(self, tenant_id):
         return self.RULE_Director_CM_URL + tenant_id[:6]
