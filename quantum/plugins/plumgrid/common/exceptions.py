@@ -17,7 +17,7 @@
 # @author: Edgar Magana, emagana@plumgrid.com, PLUMgrid, Inc.
 
 
-""" Quantum PLUMgrid Plugin exceptions """
+"""Quantum PLUMgrid Plugin exceptions"""
 
 from quantum.common import exceptions as base_exec
 
@@ -28,4 +28,4 @@ class PLUMgridException(base_exec.QuantumException):
 
 
 class PLUMgridConnectionFailed(PLUMgridException):
-    message = _("Connection failed with PLUMgrid NOS: %(err_msg)s")
+    message = _("Connection failed with PLUMgrid Director: %(err_msg)s")
