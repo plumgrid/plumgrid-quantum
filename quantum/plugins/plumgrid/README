@@ -1,7 +1,8 @@
-PLUMgrid Quantum Virtual Network Plugin
+PLUMgrid Quantum Plugin for Virtual Network Infrastructure (VNI)
 
 This plugin implements Quantum v2 APIs and helps configure
 L2/L3 virtual networks consisting of PLUMgrid Platform.
+Implements External Networks and Port Binding Extension
 
 For more details on use please refer to:
-http://wiki.openstack.org/plumgrid-quantum
+http://wiki.openstack.org/PLUMgrid-Quantum
