@@ -39,7 +39,6 @@ from quantum.plugins.plumgrid.plumgrid_nos_plugin.plugin_ver import VERSION
 
 LOG = logging.getLogger(__name__)
 PLUM_DRIVER = 'quantum.plugins.plumgrid.drivers.plumlib.Plumlib'
-ERR_MESSAGE = _('PLUMgrid Director communication failed')
 
 director_server_opts = [
     cfg.StrOpt('director_server', default='localhost',
@@ -115,9 +114,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_('PLUMgrid Library: create_network() called'))
                 self._plumlib.create_network(tenant_id, net_db, network)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Return created network
         return net_db
@@ -144,9 +143,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: update_network() called"))
                 self._plumlib.update_network(tenant_id, net_id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Return updated network
         return net_db
@@ -172,9 +171,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: update_network() called"))
                 self._plumlib.delete_network(net_db, net_id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
     def get_network(self, context, id, fields=None):
         session = context.session
@@ -227,9 +226,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: create_port() called"))
                 self._plumlib.create_port(port_db, router_db)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Plugin DB - Port Create and Return port
         return self._port_viftype_binding(context, port_db)
@@ -256,9 +255,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: create_port() called"))
                 self._plumlib.update_port(port_db, router_db)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Plugin DB - Port Update
         return self._port_viftype_binding(context, port_db)
@@ -289,9 +288,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: delete_port() called"))
                 self._plumlib.delete_port(port_db, router_db)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
     def get_port(self, context, id, fields=None):
         with context.session.begin(subtransactions=True):
@@ -344,9 +343,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 LOG.debug(_("PLUMgrid Library: create_subnet() called"))
                 self._plumlib.create_subnet(sub_db, net_db, ipnet)
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return sub_db
 
@@ -369,9 +368,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 LOG.debug(_("PLUMgrid Library: delete_subnet() called"))
                 self._plumlib.delete_subnet(tenant_id, net_db, net_id)
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
     @lockutils.synchronized('pg_rest', 'plumlib-', external=True)
     def update_subnet(self, context, subnet_id, subnet):
@@ -392,9 +391,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: update_network() called"))
                 self._plumlib.update_subnet(org_sub_db, new_sub_db, ipnet)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return new_sub_db
 
@@ -417,9 +416,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 # Add Router to VND
                 LOG.debug(_("PLUMgrid Library: create_router() called"))
                 self._plumlib.create_router(tenant_id, router_db)
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Return created router
         return router_db
@@ -434,9 +433,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             try:
                 LOG.debug(_("PLUMgrid Library: update_router() called"))
                 self._plumlib.update_router(router_db, router_id)
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         # Return updated router
         return router_db
@@ -456,9 +455,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: delete_router() called"))
                 self._plumlib.delete_router(tenant_id, router_id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
     def add_router_interface(self, context, router_id, interface_info):
 
@@ -486,9 +485,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self._plumlib.add_router_interface(tenant_id, router_id,
                                                    port_db, ipnet)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return int_router
 
@@ -521,9 +520,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 self._plumlib.remove_router_interface(tenant_id,
                                                       net_id, router_id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return del_int_router
 
@@ -544,9 +543,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: create_floatingip() called"))
                 self._plumlib.create_floatingip(net_db, floating_ip)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return floating_ip
 
@@ -568,9 +567,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: update_floatingip() called"))
                 self._plumlib.update_floatingip(net_db, floating_ip, id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
         return floating_ip
 
@@ -592,9 +591,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 LOG.debug(_("PLUMgrid Library: delete_floatingip() called"))
                 self._plumlib.delete_floatingip(net_db, floating_ip_org, id)
 
-            except Exception:
-                LOG.error(ERR_MESSAGE)
-                raise plum_excep.PLUMgridException(err_msg=ERR_MESSAGE)
+            except Exception as e:
+                LOG.error(e)
+                raise plum_excep.PLUMgridException(err_msg=e)
 
     """
     Internal PLUMgrid Fuctions
