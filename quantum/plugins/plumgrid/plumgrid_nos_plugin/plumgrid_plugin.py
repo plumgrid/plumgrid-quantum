@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# @author: Edgar Magana, emagana@plumgrid.com, PLUMgrid, Inc.
+# @author: Brenden Blanco, bblanco@plumgrid.com, PLUMgrid, Inc.
 
 """
 Quantum Plug-in for PLUMgrid Virtual Networking Infrastructure (VNI)
@@ -23,6 +23,7 @@ to the PLUMgrid Network Management System called Director
 
 import netaddr
 from oslo.config import cfg
+from sqlalchemy.orm import exc as sa_exc
 
 from quantum.api.v2 import attributes
 from quantum.db import api as db
@@ -534,14 +535,9 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             floating_ip = super(QuantumPluginPLUMgridV2,
                                 self).create_floatingip(context, floatingip)
 
-            net_id = floating_ip['floating_network_id']
-            net_db = super(QuantumPluginPLUMgridV2,
-                           self).get_network(context, net_id)
-            self._extend_network_dict_l3(context, net_db)
-
             try:
                 LOG.debug(_("PLUMgrid Library: create_floatingip() called"))
-                self._plumlib.create_floatingip(net_db, floating_ip)
+                self._plumlib.create_floatingip(floating_ip)
 
             except Exception as e:
                 LOG.error(e)
@@ -554,18 +550,16 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
 
         with context.session.begin(subtransactions=True):
 
+            floating_ip_orig = super(QuantumPluginPLUMgridV2,
+                                    self).get_floatingip(context, id)
+
             floating_ip = super(QuantumPluginPLUMgridV2,
                                 self).update_floatingip(context, id,
                                                         floatingip)
 
-            net_id = floating_ip['floating_network_id']
-            net_db = super(QuantumPluginPLUMgridV2,
-                           self).get_network(context, net_id)
-            self._extend_network_dict_l3(context, net_db)
-
             try:
                 LOG.debug(_("PLUMgrid Library: update_floatingip() called"))
-                self._plumlib.update_floatingip(net_db, floating_ip, id)
+                self._plumlib.update_floatingip(floating_ip_orig, floating_ip, id)
 
             except Exception as e:
                 LOG.error(e)
@@ -581,19 +575,36 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             floating_ip_org = super(QuantumPluginPLUMgridV2,
                                     self).get_floatingip(context, id)
 
-            net_id = floating_ip_org['floating_network_id']
-            net_db = super(QuantumPluginPLUMgridV2,
-                           self).get_network(context, net_id)
-            self._extend_network_dict_l3(context, net_db)
             super(QuantumPluginPLUMgridV2, self).delete_floatingip(context, id)
 
             try:
                 LOG.debug(_("PLUMgrid Library: delete_floatingip() called"))
-                self._plumlib.delete_floatingip(net_db, floating_ip_org, id)
+                self._plumlib.delete_floatingip(floating_ip_org, id)
 
             except Exception as e:
                 LOG.error(e)
                 raise plum_excep.PLUMgridException(err_msg=e)
+
+    def disassociate_floatingips(self, context, port_id):
+        LOG.debug(_("Quantum PLUMgrid Director: disassociate_floatingips() "
+                    "called"))
+
+        try:
+            fip_qry = context.session.query(l3_db.FloatingIP)
+            floating_ip = fip_qry.filter_by(fixed_port_id=port_id).one()
+
+            LOG.debug(_("PLUMgrid Library: disassociate_floatingips()"
+                        " called"))
+            self._plumlib.disassociate_floatingips(floating_ip, port_id)
+
+        except sa_exc.NoResultFound:
+            pass
+
+        except Exception as err_message:
+            raise plum_excep.PLUMgridException(err_msg=err_message)
+
+        super(QuantumPluginPLUMgridV2,,
+              self).disassociate_floatingips(context, port_id)
 
     """
     Internal PLUMgrid Fuctions

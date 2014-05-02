@@ -14,6 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# @author: Edgar Magana, emagana@plumgrid.com, PLUMgrid, Inc.
+# @author: Brenden Blanco, bblanco@plumgrid.com, PLUMgrid, Inc.
 
 VERSION = "0.2"

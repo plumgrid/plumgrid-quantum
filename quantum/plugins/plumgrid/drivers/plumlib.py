@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# @author: Edgar Magana, emagana@plumgrid.com, PLUMgrid, Inc.
+# @author: Brenden Blanco, bblanco@plumgrid.com, PLUMgrid, Inc.
 
 """
 Quantum Plug-in for PLUMgrid Virtual Networking Infrastructure (VNI)
@@ -87,11 +87,14 @@ class Plumlib(object):
     def remove_router_interface(self, tenant_id, net_id, router_id):
         self.plumlib.remove_router_interface(tenant_id, net_id, router_id)
 
-    def create_floatingip(self, net_db, floating_ip):
-        self.plumlib.create_floatingip(net_db, floating_ip)
+    def create_floatingip(self, floating_ip):
+        self.plumlib.create_floatingip(floating_ip)
 
-    def update_floatingip(self, net_db, floating_ip, id):
-        self.plumlib.update_floatingip(net_db, floating_ip, id)
+    def update_floatingip(self, floating_ip_orig, floating_ip, id):
+        self.plumlib.update_floatingip(floating_ip_orig, floating_ip, id)
 
-    def delete_floatingip(self, net_db, floating_ip_org, id):
-        self.plumlib.delete_floatingip(net_db, floating_ip_org, id)
+    def delete_floatingip(self, floating_ip_org, id):
+        self.plumlib.delete_floatingip(floating_ip_org, id)
+
+    def disassociate_floatingips(self, floating_ip, port_id):
+        self.plumlib.disassociate_floatingips(floating_ip, port_id)
