@@ -603,7 +603,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         except Exception as err_message:
             raise plum_excep.PLUMgridException(err_msg=err_message)
 
-        super(QuantumPluginPLUMgridV2,,
+        super(QuantumPluginPLUMgridV2,
               self).disassociate_floatingips(context, port_id)
 
     """
