@@ -30,8 +30,10 @@ from quantum.db import api as db
 from quantum.db import db_base_plugin_v2
 from quantum.db import l3_db
 from quantum.db import quota_db  # noqa
+from quantum.db import securitygroups_db
 from quantum.extensions import portbindings
 from quantum.extensions import providernet
+from quantum.extensions import securitygroup as sec_grp
 from quantum.openstack.common import importutils
 from quantum.openstack.common import lockutils
 from quantum.openstack.common import log as logging
@@ -57,10 +59,11 @@ cfg.CONF.register_opts(director_server_opts, "PLUMgridDirector")
 
 
 class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
-                              l3_db.L3_NAT_db_mixin):
+                              l3_db.L3_NAT_db_mixin,
+                              securitygroups_db.SecurityGroupDbMixin):
 
-    supported_extension_aliases = ["external-net", "router", "binding",
-                                   "quotas", "provider"]
+    supported_extension_aliases = ["binding", "external-net", "provider",
+                                   "quotas", "router", "security-group"]
 
     binding_view = "extension:port_binding:view"
     binding_set = "extension:port_binding:set"
@@ -110,6 +113,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # Propagate all L3 data into DB
             self._process_l3_create(context, network['network'], net_db['id'])
             self._extend_network_dict_l3(context, net_db)
+            self._ensure_default_security_group(context, tenant_id)
 
             try:
                 LOG.debug(_('PLUMgrid Library: create_network() called'))
@@ -212,11 +216,24 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         # It requires admin_state_up to be True
 
         port["port"]["admin_state_up"] = True
+        port_data = port["port"]
 
         with context.session.begin(subtransactions=True):
             # Plugin DB - Port Create and Return port
             port_db = super(QuantumPluginPLUMgridV2, self).create_port(context,
                                                                        port)
+
+            # Update port security
+            port_data.update(port_db)
+
+            self._ensure_default_security_group_on_port(context, port)
+
+            port_data[sec_grp.SECURITYGROUPS] = (
+                self._get_security_groups_on_port(context, port))
+
+            self._process_port_create_security_group(
+                context, port_db, port_data[sec_grp.SECURITYGROUPS])
+
             device_id = port_db["device_id"]
             if port_db["device_owner"] == "network:router_gateway":
                 router_db = self._get_router(context, device_id)
@@ -252,6 +269,14 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
                 router_db = self._get_router(context, device_id)
             else:
                 router_db = None
+            if (self._check_update_deletes_security_groups(port) or
+                    self._check_update_has_security_groups(port)):
+                self._delete_port_security_group_bindings(context,
+                                                          port_db["id"])
+                sg_ids = self._get_security_groups_on_port(context, port)
+                self._process_port_create_security_group(context,
+                                                         port_db,
+                                                         sg_ids)
             try:
                 LOG.debug(_("PLUMgrid Library: create_port() called"))
                 self._plumlib.update_port(port_db, router_db)
@@ -606,6 +631,141 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
         super(QuantumPluginPLUMgridV2,
               self).disassociate_floatingips(context, port_id)
 
+    def create_security_group(self, context, security_group, default_sg=False):
+        """Create a security group
+
+        Create a new security group, including the default security group
+        """
+        LOG.debug(_("Quantum PLUMgrid Director: create_security_group()"
+                    " called"))
+
+        with context.session.begin(subtransactions=True):
+
+            sg = security_group.get('security_group')
+
+            tenant_id = self._get_tenant_id_for_create(context, sg)
+            if not default_sg:
+                self._ensure_default_security_group(context, tenant_id)
+
+            sg_db =  super(QuantumPluginPLUMgridV2,
+                            self).create_security_group(context, security_group,
+                                                        default_sg)
+            try:
+                LOG.debug(_("PLUMgrid Library: create_security_group()"
+                            " called"))
+                self._plumlib.create_security_group(sg_db)
+
+            except Exception as err_message:
+                raise plum_excep.PLUMgridException(err_msg=err_message)
+
+        return sg_db
+
+    def delete_security_group(self, context, sg_id):
+        """Delete a security group
+
+        Delete security group from Quantum and PLUMgrid Platform
+        """
+        with context.session.begin(subtransactions=True):
+
+            sg = super(QuantumPluginPLUMgridV2, self).get_security_group(
+                context, sg_id)
+            if not sg:
+                raise sec_grp.SecurityGroupNotFound(id=sg_id)
+
+            if sg['name'] == 'default' and not context.is_admin:
+                raise sec_grp.SecurityGroupCannotRemoveDefault()
+
+            sec_grp_ip = sg['id']
+            filters = {'security_group_id': [sec_grp_ip]}
+            if super(QuantumPluginPLUMgridV2, self)._get_port_security_group_bindings(
+                context, filters):
+                raise sec_grp.SecurityGroupInUse(id=sec_grp_ip)
+
+            sec_db = super(QuantumPluginPLUMgridV2, self).delete_security_group(
+                context, sg_id)
+            try:
+                LOG.debug(_("PLUMgrid Library: delete_security_group()"
+                            " called"))
+                self._plumlib.delete_security_group(sg)
+
+            except Exception as err_message:
+                raise plum_excep.PLUMgridException(err_msg=err_message)
+
+            return sec_db
+
+    def create_security_group_rule(self, context, security_group_rule):
+        """Create a security group rule
+
+        Create a security group rule in Quantum and PLUMgrid Platform
+        """
+        LOG.debug(_("Quantum PLUMgrid Director: create_security_group_rule()"
+                    " called"))
+        bulk_rule = {'security_group_rules': [security_group_rule]}
+        return self.create_security_group_rule_bulk(context, bulk_rule)[0]
+
+    def create_security_group_rule_bulk(self, context, security_group_rule):
+        """Create security group rules
+
+        Create security group rules in Quantum and PLUMgrid Platform
+        """
+        sg_rules = security_group_rule.get('security_group_rules')
+
+        with context.session.begin(subtransactions=True):
+            sg_id = self._validate_security_group_rules(
+                context, security_group_rule)
+
+            # Check to make sure security group exists
+            security_group = super(QuantumPluginPLUMgridV2,
+                                   self).get_security_group(context,
+                                                            sg_id)
+
+            if not security_group:
+                raise sec_grp.SecurityGroupNotFound(id=sg_id)
+
+            # Check for duplicate rules
+            self._check_for_duplicate_rules(context, sg_rules)
+
+            sec_db = (super(QuantumPluginPLUMgridV2, self).
+                            create_security_group_rule_bulk_native(
+                            context, security_group_rule))
+            try:
+                LOG.debug(_("PLUMgrid Library: create_security_"
+                            "group_rule_bulk() called"))
+                self._plumlib.create_security_group_rule_bulk(sec_db)
+
+            except Exception as err_message:
+                raise plum_excep.PLUMgridException(err_msg=err_message)
+
+            return sec_db
+
+    def delete_security_group_rule(self, context, sgr_id):
+        """Delete a security group rule
+
+        Delete a security group rule in Quantum and PLUMgrid Platform
+        """
+
+        LOG.debug(_("Quantum PLUMgrid Director: delete_security_group_rule()"
+                    " called"))
+
+        with context.session.begin(subtransactions=True):
+            sgr = (
+                super(QuantumPluginPLUMgridV2, self).get_security_group_rule(
+                    context, sgr_id))
+
+            if not sgr:
+                raise sec_grp.SecurityGroupRuleNotFound(id=sgr_id)
+
+            sg_id = sgr['security_group_id']
+            super(QuantumPluginPLUMgridV2, self).delete_security_group_rule(context,
+                                                                       sgr_id)
+            try:
+                LOG.debug(_("PLUMgrid Library: delete_security_"
+                            "group_rule() called"))
+                self._plumlib.delete_security_group_rule(sgr)
+
+            except Exception as err_message:
+                raise plum_excep.PLUMgridException(err_msg=err_message)
+
     """
     Internal PLUMgrid Fuctions
     """
@@ -667,3 +827,7 @@ class QuantumPluginPLUMgridV2(db_base_plugin_v2.QuantumDbPluginV2,
             # return auto-generated pools
         # no need to check for their validity
         return pools
+
+    def _validate_security_group_rules(self, context, rules):
+        return super(QuantumPluginPLUMgridV2,
+                     self)._validate_security_group_rules(context, rules)
